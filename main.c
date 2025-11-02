@@ -493,7 +493,13 @@ void UpdateDrones(Drone drones[], float deltaTime) {
         switch(drones[i].state) {
             case DRONE_FLYING:
                 drones[i].position.x -= DRONE_SPEED * deltaTime;
-                if (drones[i].position.x < -150) {
+                // If Shahed reaches left side, make it fall down
+                if (drones[i].isShahed && drones[i].position.x < 100) {
+                    drones[i].state = DRONE_FALLING;
+                    drones[i].animTimer = 0.0f;
+                }
+                // Non-Shahed drones just disappear off screen
+                else if (drones[i].position.x < -150) {
                     drones[i].active = false;
                 }
                 break;
@@ -507,10 +513,16 @@ void UpdateDrones(Drone drones[], float deltaTime) {
 
             case DRONE_FALLING:
                 drones[i].animTimer += deltaTime;
-                drones[i].position.y += 100.0f * deltaTime; // Fall down
+                drones[i].position.x -= DRONE_SPEED * 0.5f * deltaTime; // Continue moving left (slower)
+                drones[i].position.y += 150.0f * deltaTime; // Fall down faster
 
-                // Check if drone is within 200 pixels from ground (screenHeight = 694, so 694 - 200 = 494)
-                if (drones[i].position.y >= 494.0f) {
+                // If Shahed hits ground (300px above bottom = 694 - 300 = 394), explode
+                if (drones[i].isShahed && drones[i].position.y >= 394.0f) {
+                    drones[i].state = DRONE_EXPLODING;
+                    drones[i].animTimer = 0.0f;
+                }
+                // Non-Shahed drones just disappear when hitting ground or going off screen
+                else if (drones[i].position.y >= 494.0f || drones[i].position.x < -150) {
                     drones[i].state = DRONE_DEAD;
                 }
                 break;
