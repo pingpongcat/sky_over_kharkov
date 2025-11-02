@@ -50,7 +50,7 @@ typedef struct {
 //------------------------------------------------------------------------------------
 // Function Declarations
 //------------------------------------------------------------------------------------
-void GenerateNewEquation(MathEquation *eq);
+void GenerateNewEquation(MathEquation *eq, int level);
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount);
 void UpdateDrones(Drone drones[], float deltaTime);
 void UpdateGepard(GepardTank *gepard, float deltaTime);
@@ -89,11 +89,15 @@ int main(void)
     MathEquation currentEquation = {0};
     int ammo = INITIAL_AMMO;
     int score = 0;
+    int level = 1;
+    bool shahedActive = false; // Track if Shahed from current equation is still active
 
     float spawnTimer = 0.0f;
     float spawnInterval = 3.0f;
 
+    bool levelSelected = false;
     bool gameStarted = false;
+    bool paused = false;
 
     //--------------------------------------------------------------------------------------
 
@@ -104,90 +108,131 @@ int main(void)
 
         // Update
         //----------------------------------------------------------------------------------
-        if (!gameStarted) {
-            if (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        if (!levelSelected) {
+            // Level selection screen
+            if (IsKeyPressed(KEY_ONE)) {
+                level = 1;
+                levelSelected = true;
+            } else if (IsKeyPressed(KEY_TWO)) {
+                level = 2;
+                levelSelected = true;
+            } else if (IsKeyPressed(KEY_THREE)) {
+                level = 3;
+                levelSelected = true;
+            }
+
+            if (levelSelected) {
                 gameStarted = true;
-                GenerateNewEquation(&currentEquation);
+                GenerateNewEquation(&currentEquation, level);
                 SpawnDrones(drones, &currentEquation, &activeDroneCount);
+                shahedActive = true;
             }
-        } else {
-            // Update turret position based on mouse
-            Vector2 mousePos = GetMousePosition();
-            gepard.turretIndex = GetTurretIndexFromMouse(mousePos.x, screenWidth);
-
-            // Update gepard animation
-            UpdateGepard(&gepard, deltaTime);
-
-            // Update drones
-            UpdateDrones(drones, deltaTime);
-
-            // Spawn timer
-            spawnTimer += deltaTime;
-
-            // Check if all drones are dead/inactive
-            int aliveCount = 0;
-            for (int i = 0; i < MAX_DRONES; i++) {
-                if (drones[i].active && drones[i].state != DRONE_DEAD) {
-                    aliveCount++;
-                }
+        } else if (gameStarted) {
+            // Toggle pause
+            if (IsKeyPressed(KEY_P)) {
+                paused = !paused;
             }
 
-            // Spawn new wave if no drones active or timer expired
-            if ((aliveCount == 0 && spawnTimer > 1.0f) || spawnTimer > spawnInterval + 5.0f) {
-                GenerateNewEquation(&currentEquation);
-                SpawnDrones(drones, &currentEquation, &activeDroneCount);
-                spawnTimer = 0.0f;
-            }
+            if (!paused) {
+                // Update turret position based on mouse
+                Vector2 mousePos = GetMousePosition();
+                gepard.turretIndex = GetTurretIndexFromMouse(mousePos.x, screenWidth);
 
-            // Handle shooting
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !gepard.isFiring && ammo >= SHOT_COST) {
-                // Check if clicked on a drone
+                // Update gepard animation
+                UpdateGepard(&gepard, deltaTime);
+
+                // Update drones
+                UpdateDrones(drones, deltaTime);
+
+                // Spawn timer
+                spawnTimer += deltaTime;
+
+                // Check if Shahed is still active
+                bool shahedFound = false;
+                int aliveCount = 0;
                 for (int i = 0; i < MAX_DRONES; i++) {
-                    if (drones[i].active && drones[i].state == DRONE_FLYING) {
-                        Rectangle droneRect = { drones[i].position.x, drones[i].position.y, 100, 100 };
-                        if (CheckCollisionPointRec(mousePos, droneRect)) {
-                            // Hit a drone
-                            ammo -= SHOT_COST;
-                            gepard.isFiring = true;
-                            gepard.fireTimer = 0.0f;
-                            gepard.fireFrame = 0;
-
-                            if (drones[i].isShahed) {
-                                // Correct hit!
-                                drones[i].state = DRONE_EXPLODING;
-                                drones[i].animTimer = 0.0f;
-                                ammo += HIT_REWARD;
-                                score += 10;
-                            } else {
-                                // Wrong hit
-                                drones[i].state = DRONE_FALLING;
-                                drones[i].animTimer = 0.0f;
-                                score -= 5;
-                            }
-                            break;
+                    if (drones[i].active && drones[i].state != DRONE_DEAD) {
+                        aliveCount++;
+                        if (drones[i].isShahed && drones[i].state == DRONE_FLYING) {
+                            shahedFound = true;
                         }
                     }
                 }
-            }
 
-            // Game over check
-            if (ammo < SHOT_COST) {
-                // Check if can still win with remaining drones
-                bool canWin = false;
-                for (int i = 0; i < MAX_DRONES; i++) {
-                    if (drones[i].active && drones[i].state == DRONE_FLYING && drones[i].isShahed) {
-                        canWin = true;
-                        break;
+                // Update shahedActive status
+                if (!shahedFound) {
+                    shahedActive = false;
+                }
+
+                // Spawn new wave only if Shahed has been dealt with (hit or missed)
+                if (!shahedActive && spawnTimer > 1.0f) {
+                    GenerateNewEquation(&currentEquation, level);
+                    SpawnDrones(drones, &currentEquation, &activeDroneCount);
+                    shahedActive = true;
+                    spawnTimer = 0.0f;
+                }
+
+                // Handle shooting
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !gepard.isFiring && ammo >= SHOT_COST) {
+                    // Check if clicked on a drone
+                    for (int i = 0; i < MAX_DRONES; i++) {
+                        if (drones[i].active && drones[i].state == DRONE_FLYING) {
+                            Rectangle droneRect = { drones[i].position.x, drones[i].position.y, 100, 100 };
+                            if (CheckCollisionPointRec(mousePos, droneRect)) {
+                                // Hit a drone
+                                ammo -= SHOT_COST;
+                                gepard.isFiring = true;
+                                gepard.fireTimer = 0.0f;
+                                gepard.fireFrame = 0;
+
+                                if (drones[i].isShahed) {
+                                    // Correct hit!
+                                    drones[i].state = DRONE_EXPLODING;
+                                    drones[i].animTimer = 0.0f;
+                                    ammo += HIT_REWARD;
+                                    score += 10;
+                                    shahedActive = false; // Shahed destroyed, can generate new equation
+                                } else {
+                                    // Wrong hit
+                                    drones[i].state = DRONE_FALLING;
+                                    drones[i].animTimer = 0.0f;
+                                    score -= 5;
+                                }
+                                break;
+                            }
+                        }
                     }
                 }
-                if (!canWin && aliveCount == 0) {
-                    // Game over - restart
-                    if (IsKeyPressed(KEY_R)) {
-                        ammo = INITIAL_AMMO;
-                        score = 0;
-                        GenerateNewEquation(&currentEquation);
-                        SpawnDrones(drones, &currentEquation, &activeDroneCount);
-                        spawnTimer = 0.0f;
+
+                // Game over check
+                if (ammo < SHOT_COST) {
+                    // Check if can still win with remaining drones
+                    bool canWin = false;
+                    int aliveCount = 0;
+                    for (int i = 0; i < MAX_DRONES; i++) {
+                        if (drones[i].active && drones[i].state != DRONE_DEAD) {
+                            aliveCount++;
+                        }
+                        if (drones[i].active && drones[i].state == DRONE_FLYING && drones[i].isShahed) {
+                            canWin = true;
+                        }
+                    }
+                    if (!canWin && aliveCount == 0) {
+                        // Game over - restart
+                        if (IsKeyPressed(KEY_R)) {
+                            ammo = INITIAL_AMMO;
+                            score = 0;
+                            levelSelected = false;
+                            gameStarted = false;
+                            shahedActive = false;
+                            paused = false;
+                            spawnTimer = 0.0f;
+
+                            // Clear all drones
+                            for (int i = 0; i < MAX_DRONES; i++) {
+                                drones[i].active = false;
+                            }
+                        }
                     }
                 }
             }
@@ -200,30 +245,39 @@ int main(void)
 
             ClearBackground((Color){135, 206, 235, 255}); // Sky blue
 
-            if (!gameStarted) {
-                DrawText("SKY OVER KHARKIV", screenWidth/2 - 200, screenHeight/2 - 60, 40, BLACK);
-                DrawText("Defend against Shahed drones!", screenWidth/2 - 180, screenHeight/2, 20, DARKGRAY);
-                DrawText("Solve the equation to identify the Shahed", screenWidth/2 - 220, screenHeight/2 + 30, 20, DARKGRAY);
-                DrawText("Press SPACE or CLICK to Start", screenWidth/2 - 180, screenHeight/2 + 80, 20, RED);
-            } else {
+            if (!levelSelected) {
+                // Level selection screen
+                DrawText("SKY OVER KHARKIV", screenWidth/2 - 200, screenHeight/2 - 120, 40, BLACK);
+                DrawText("Defend against Shahed drones!", screenWidth/2 - 180, screenHeight/2 - 60, 20, DARKGRAY);
+                DrawText("Solve the equation to identify the Shahed", screenWidth/2 - 220, screenHeight/2 - 30, 20, DARKGRAY);
+
+                DrawText("SELECT LEVEL:", screenWidth/2 - 100, screenHeight/2 + 20, 25, BLACK);
+                DrawText("Press 1: Easy (Addition & Subtraction, 0-20)", screenWidth/2 - 240, screenHeight/2 + 60, 20, DARKGREEN);
+                DrawText("Press 2: Medium (+ Multiplication)", screenWidth/2 - 180, screenHeight/2 + 90, 20, ORANGE);
+                DrawText("Press 3: Hard (+ Division)", screenWidth/2 - 140, screenHeight/2 + 120, 20, RED);
+            } else if (gameStarted) {
                 // Draw equation
                 char equationText[64];
                 sprintf(equationText, "Equation: %d %c %d = ?",
                         currentEquation.num1, currentEquation.operation, currentEquation.num2);
                 DrawText(equationText, 20, 20, 30, BLACK);
 
-                // Draw score
+                // Draw score and level
                 char scoreText[32];
                 sprintf(scoreText, "Score: %d", score);
                 DrawText(scoreText, screenWidth - 150, 20, 25, BLACK);
+
+                char levelText[32];
+                sprintf(levelText, "Level: %d", level);
+                DrawText(levelText, screenWidth - 150, 50, 25, DARKBLUE);
 
                 // Draw drones
                 for (int i = 0; i < MAX_DRONES; i++) {
                     if (drones[i].active && drones[i].state != DRONE_DEAD) {
                         DrawDrone(sahedTexture, drones[i]);
 
-                        // Draw answer above drone
-                        if (drones[i].state == DRONE_FLYING) {
+                        // Draw answer above drone (hide when paused)
+                        if (drones[i].state == DRONE_FLYING && !paused) {
                             char answerText[16];
                             sprintf(answerText, "%d", drones[i].answer);
                             int textWidth = MeasureText(answerText, 20);
@@ -238,6 +292,13 @@ int main(void)
 
                 // Draw ammo
                 DrawAmmo(ammo, screenWidth, screenHeight);
+
+                // Draw pause message
+                if (paused) {
+                    DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 128});
+                    DrawText("PAUSED", screenWidth/2 - 80, screenHeight/2 - 40, 50, WHITE);
+                    DrawText("Press P to Resume", screenWidth/2 - 100, screenHeight/2 + 20, 20, WHITE);
+                }
 
                 // Draw game over message
                 if (ammo < SHOT_COST) {
@@ -262,27 +323,56 @@ int main(void)
 //------------------------------------------------------------------------------------
 // Function Definitions
 //------------------------------------------------------------------------------------
-void GenerateNewEquation(MathEquation *eq) {
-    int opType = rand() % 3; // 0: add, 1: subtract, 2: multiply
+void GenerateNewEquation(MathEquation *eq, int level) {
+    int opType;
+
+    // Determine available operations based on level
+    if (level == 1) {
+        opType = rand() % 2; // 0: add, 1: subtract
+    } else if (level == 2) {
+        opType = rand() % 3; // 0: add, 1: subtract, 2: multiply
+    } else {
+        opType = rand() % 4; // 0: add, 1: subtract, 2: multiply, 3: divide
+    }
 
     switch(opType) {
         case 0: // Addition
-            eq->num1 = 5 + rand() % 45;
-            eq->num2 = 5 + rand() % 45;
+            if (level == 1) {
+                eq->num1 = rand() % 21; // 0-20
+                eq->num2 = rand() % (21 - eq->num1); // Ensure sum <= 20
+            } else {
+                eq->num1 = 5 + rand() % 45;
+                eq->num2 = 5 + rand() % 45;
+            }
             eq->operation = '+';
             eq->correctAnswer = eq->num1 + eq->num2;
             break;
+
         case 1: // Subtraction
-            eq->num1 = 20 + rand() % 60;
-            eq->num2 = 5 + rand() % (eq->num1 - 5);
+            if (level == 1) {
+                eq->num1 = rand() % 21; // 0-20
+                eq->num2 = rand() % (eq->num1 + 1); // Ensure result >= 0
+            } else {
+                eq->num1 = 20 + rand() % 60;
+                eq->num2 = 5 + rand() % (eq->num1 - 5);
+            }
             eq->operation = '-';
             eq->correctAnswer = eq->num1 - eq->num2;
             break;
+
         case 2: // Multiplication
             eq->num1 = 2 + rand() % 12;
             eq->num2 = 2 + rand() % 12;
             eq->operation = '*';
             eq->correctAnswer = eq->num1 * eq->num2;
+            break;
+
+        case 3: // Division
+            // Generate answer first, then calculate dividend to ensure whole number result
+            eq->correctAnswer = 2 + rand() % 10; // Answer: 2-11
+            eq->num2 = 2 + rand() % 9; // Divisor: 2-10
+            eq->num1 = eq->correctAnswer * eq->num2; // Dividend
+            eq->operation = '/';
             break;
     }
 }
