@@ -71,6 +71,13 @@
 #define AMMO_WARNING_THRESHOLD 10
 #define AMMO_CRITICAL_THRESHOLD 5
 
+// Font constants for pixel-perfect rendering
+#define MECHA_SPACING 8
+#define SETBACK_SPACING 4
+#define ROMULUS_SPACING 3
+#define ALPHA_BETA_SPACING 4
+#define PIXANTIQUA_SPACING 4
+
 // Spawn timing
 #define SPAWN_INTERVAL 3.0f
 #define RESPAWN_DELAY 1.0f
@@ -80,8 +87,6 @@
 #define DRONE_FALL_END_Y GROUND_LEVEL
 #define DRONE_TEXT_OFFSET_X 95.0f
 #define DRONE_TEXT_OFFSET_Y 30.0f
-#define DRONE_TEXT_SIZE 50
-#define DRONE_TEXT_SPACING 3
 
 // Projectile visual constants
 #define PROJECTILE_TRAIL_LENGTH 0.02f
@@ -174,7 +179,7 @@ int GetTurretIndexFromMouse(int mouseX, int screenWidth);
 // Drawing functions
 void DrawDrone(Texture2D texture, Drone drone);
 void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position);
-void DrawAmmo(int ammo, int screenWidth, int screenHeight, Font font);
+void DrawAmmo(int ammo, int screenWidth, int screenHeight);
 void DrawProjectiles(Projectile projectiles[]);
 
 // Helper functions to reduce redundant calculations
@@ -201,23 +206,27 @@ int main(void)
     // Seed random
     srand(time(NULL));
 
-    // Load custom fonts - try system Noto Sans first, then local font folder
-    Font customFont = LoadFontEx("/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", 96, 0, 0);
-    Font boldFont = LoadFontEx("/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", 96, 0, 0);
+    // Load Raylib's sprite fonts
+    Font mechaFont = LoadFont("fonts/mecha.png");
+    Font setbackFont = LoadFont("fonts/setback.png");
+    Font romulusFont = LoadFont("fonts/romulus.png");
+    Font alphaBetaFont = LoadFont("fonts/alpha_beta.png");
+    Font pixantiquaFont = LoadFont("fonts/pixantiqua.png");
 
-    if (customFont.texture.id == 0) {
-        printf("System font not found, trying local font folder...\n");
-        customFont = LoadFontEx("font/NotoSansSyriacWestern-Regular.ttf", 96, 0, 0);
-        boldFont = customFont; // Use same font if system font not found
-    }
-    if (customFont.texture.id == 0) {
-        printf("ERROR: Failed to load custom font! Using default.\n");
-        customFont = GetFontDefault();
-        boldFont = GetFontDefault();
+    if (mechaFont.texture.id == 0 || setbackFont.texture.id == 0 || romulusFont.texture.id == 0 || alphaBetaFont.texture.id == 0 || pixantiquaFont.texture.id == 0) {
+        printf("ERROR: Failed to load sprite fonts! Using default.\n");
+        if (mechaFont.texture.id == 0) mechaFont = GetFontDefault();
+        if (setbackFont.texture.id == 0) setbackFont = GetFontDefault();
+        if (romulusFont.texture.id == 0) romulusFont = GetFontDefault();
+        if (alphaBetaFont.texture.id == 0) alphaBetaFont = GetFontDefault();
+        if (pixantiquaFont.texture.id == 0) pixantiquaFont = GetFontDefault();
     } else {
-        printf("Custom fonts loaded successfully!\n");
-        SetTextureFilter(customFont.texture, TEXTURE_FILTER_BILINEAR);
-        SetTextureFilter(boldFont.texture, TEXTURE_FILTER_BILINEAR);
+        printf("Sprite fonts loaded successfully!\n");
+        SetTextureFilter(mechaFont.texture, TEXTURE_FILTER_POINT);
+        SetTextureFilter(setbackFont.texture, TEXTURE_FILTER_POINT);
+        SetTextureFilter(romulusFont.texture, TEXTURE_FILTER_POINT);
+        SetTextureFilter(alphaBetaFont.texture, TEXTURE_FILTER_POINT);
+        SetTextureFilter(pixantiquaFont.texture, TEXTURE_FILTER_POINT);
     }
 
     // Load textures
@@ -406,34 +415,34 @@ int main(void)
             ClearBackground(BLACK);
 
             if (!levelSelected) {
-                // Level selection screen
+                // Level selection screen - using Setback font
                 ClearBackground((Color){135, 206, 235, 255}); // Sky blue for menu
-                DrawTextEx(customFont, "SKY OVER KHARKIV", (Vector2){screenWidth/2 - 220, screenHeight/2 - 120}, 50, 2, BLACK);
-                DrawTextEx(customFont, "Defend against Shahed drones!", (Vector2){screenWidth/2 - 200, screenHeight/2 - 60}, 30, 1, DARKGRAY);
-                DrawTextEx(customFont, "Solve the equation to identify the Shahed", (Vector2){screenWidth/2 - 250, screenHeight/2 - 30}, 30, 1, DARKGRAY);
+                DrawTextEx(setbackFont, "SKY OVER KHARKIV", (Vector2){screenWidth/2 - 220, screenHeight/2 - 120}, setbackFont.baseSize * 3, SETBACK_SPACING, BLACK);
+                DrawTextEx(setbackFont, "Defend against Shahed drones!", (Vector2){screenWidth/2 - 200, screenHeight/2 - 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
+                DrawTextEx(setbackFont, "Solve the equation to identify the Shahed", (Vector2){screenWidth/2 - 250, screenHeight/2 - 30}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
 
-                DrawTextEx(customFont, "SELECT LEVEL:", (Vector2){screenWidth/2 - 110, screenHeight/2 + 20}, 35, 1.5, BLACK);
-                DrawTextEx(customFont, "Press 1: Easy (Addition & Subtraction, 0-20)", (Vector2){screenWidth/2 - 270, screenHeight/2 + 60}, 30, 1, DARKGREEN);
-                DrawTextEx(customFont, "Press 2: Medium (+ Multiplication)", (Vector2){screenWidth/2 - 210, screenHeight/2 + 90}, 30, 1, ORANGE);
-                DrawTextEx(customFont, "Press 3: Hard (+ Division)", (Vector2){screenWidth/2 - 160, screenHeight/2 + 120}, 30, 1, RED);
+                DrawTextEx(setbackFont, "SELECT LEVEL:", (Vector2){screenWidth/2 - 110, screenHeight/2 + 20}, setbackFont.baseSize * 2, SETBACK_SPACING, BLACK);
+                DrawTextEx(setbackFont, "Press 1: Easy (Addition & Subtraction, 0-20)", (Vector2){screenWidth/2 - 270, screenHeight/2 + 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGREEN);
+                DrawTextEx(setbackFont, "Press 2: Medium (+ Multiplication)", (Vector2){screenWidth/2 - 210, screenHeight/2 + 90}, setbackFont.baseSize * 2, SETBACK_SPACING, ORANGE);
+                DrawTextEx(setbackFont, "Press 3: Hard (+ Division)", (Vector2){screenWidth/2 - 160, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, RED);
             } else if (gameStarted) {
                 // Draw background
                 DrawTexture(backgroundTexture, 0, 0, WHITE);
 
-                // Draw equation
+                // Draw equation - using Pixantiqua font
                 char equationText[64];
                 sprintf(equationText, "%d %c %d = ?",
                         currentEquation.num1, currentEquation.operation, currentEquation.num2);
-                DrawTextEx(customFont, equationText, (Vector2){20, 20}, 60, 2, BLACK);
+                DrawTextEx(pixantiquaFont, equationText, (Vector2){20, 20}, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING, BLACK);
 
-                // Draw score and level
+                // Draw score and level - using Mecha font
                 char scoreText[32];
                 sprintf(scoreText, "Score: %d", score);
-                DrawTextEx(customFont, scoreText, (Vector2){screenWidth - 180, 20}, 35, 1, BLACK);
+                DrawTextEx(mechaFont, scoreText, (Vector2){screenWidth - 180, 20}, mechaFont.baseSize * 2, MECHA_SPACING, BLACK);
 
                 char levelText[32];
                 sprintf(levelText, "Level: %d", level);
-                DrawTextEx(customFont, levelText, (Vector2){screenWidth - 180, 60}, 35, 1, DARKBLUE);
+                DrawTextEx(mechaFont, levelText, (Vector2){screenWidth - 180, 60}, mechaFont.baseSize * 2, MECHA_SPACING, DARKBLUE);
 
                 // Draw drone sprites
                 for (int i = 0; i < MAX_DRONES; i++) {
@@ -442,20 +451,17 @@ int main(void)
                     }
                 }
 
-                // Draw all numbers on top (so they're never hidden by other drones)
+                // Draw all numbers on top (so they're never hidden by other drones) - using Pixantiqua font
                 if (!paused) {
                     for (int i = 0; i < MAX_DRONES; i++) {
                         if (drones[i].active && drones[i].state == DRONE_FLYING) {
                             char answerText[16];
                             sprintf(answerText, "%d", drones[i].answer);
-                            Vector2 textSize = MeasureTextEx(boldFont, answerText, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING);
+                            Vector2 textSize = MeasureTextEx(pixantiquaFont, answerText, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING);
                             Vector2 textPos = {drones[i].position.x + DRONE_TEXT_OFFSET_X - textSize.x/2,
                                                drones[i].position.y + DRONE_TEXT_OFFSET_Y};
-                            // Draw text multiple times with slight offsets to create bold effect
-                            DrawTextEx(boldFont, answerText, (Vector2){textPos.x + 1, textPos.y}, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
-                            DrawTextEx(boldFont, answerText, (Vector2){textPos.x, textPos.y + 1}, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
-                            DrawTextEx(boldFont, answerText, (Vector2){textPos.x + 1, textPos.y + 1}, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
-                            DrawTextEx(boldFont, answerText, textPos, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
+                            // Draw red text
+                            DrawTextEx(pixantiquaFont, answerText, textPos, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING, RED);
                         }
                     }
                 }
@@ -467,18 +473,18 @@ int main(void)
                 DrawProjectiles(projectiles);
 
                 // Draw ammo
-                DrawAmmo(ammo, screenWidth, screenHeight, customFont);
+                DrawAmmo(ammo, screenWidth, screenHeight);
 
-                // Draw pause message
+                // Draw pause message - using Mecha font
                 if (paused) {
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 128});
-                    DrawTextEx(customFont, "PAUSED", (Vector2){screenWidth/2 - 100, screenHeight/2 - 40}, 60, 1, WHITE);
-                    DrawTextEx(customFont, "Press SPACE to Resume", (Vector2){screenWidth/2 - 150, screenHeight/2 + 20}, 30, 1, WHITE);
+                    DrawTextEx(mechaFont, "PAUSED", (Vector2){screenWidth/2 - 100, screenHeight/2 - 40}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+                    DrawTextEx(mechaFont, "Press SPACE to Resume", (Vector2){screenWidth/2 - 150, screenHeight/2 + 20}, mechaFont.baseSize * 2, MECHA_SPACING, WHITE);
                 }
 
-                // Draw game over message
+                // Draw game over message - using Mecha font
                 if (ammo < SHOT_COST) {
-                    DrawTextEx(customFont, "OUT OF AMMO! Press R to Restart", (Vector2){screenWidth/2 - 250, screenHeight/2}, 35, 1, RED);
+                    DrawTextEx(mechaFont, "OUT OF AMMO! Press R to Restart", (Vector2){screenWidth/2 - 250, screenHeight/2}, mechaFont.baseSize * 2, MECHA_SPACING, RED);
                 }
             }
 
@@ -503,8 +509,11 @@ int main(void)
     // De-Initialization
     //--------------------------------------------------------------------------------------
     UnloadRenderTexture(target);
-    UnloadFont(customFont);
-    UnloadFont(boldFont);
+    UnloadFont(mechaFont);
+    UnloadFont(setbackFont);
+    UnloadFont(romulusFont);
+    UnloadFont(alphaBetaFont);
+    UnloadFont(pixantiquaFont);
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
     UnloadTexture(backgroundTexture);
@@ -802,7 +811,7 @@ void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position) {
     DrawTexturePro(texture, sourceRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
 }
 
-void DrawAmmo(int ammo, int screenWidth, int screenHeight, Font font) {
+void DrawAmmo(int ammo, int screenWidth, int screenHeight) {
     int startX = screenWidth - AMMO_DISPLAY_OFFSET_X;
     int startY = screenHeight - AMMO_DISPLAY_OFFSET_Y;
 
