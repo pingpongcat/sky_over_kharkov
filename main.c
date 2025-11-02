@@ -69,7 +69,7 @@ void SpawnProjectile(Projectile projectiles[], Vector2 start, Vector2 target, in
 int GetTurretIndexFromMouse(int mouseX, int screenWidth);
 void DrawDrone(Texture2D texture, Drone drone);
 void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position);
-void DrawAmmo(int ammo, int screenWidth, int screenHeight);
+void DrawAmmo(int ammo, int screenWidth, int screenHeight, Font font);
 void DrawProjectiles(Projectile projectiles[]);
 
 //------------------------------------------------------------------------------------
@@ -87,6 +87,20 @@ int main(void)
 
     // Seed random
     srand(time(NULL));
+
+    // Load custom font - try system Noto Sans first, then local font folder
+    Font customFont = LoadFontEx("/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", 96, 0, 0);
+    if (customFont.texture.id == 0) {
+        printf("System font not found, trying local font folder...\n");
+        customFont = LoadFontEx("font/NotoSansSyriacWestern-Regular.ttf", 96, 0, 0);
+    }
+    if (customFont.texture.id == 0) {
+        printf("ERROR: Failed to load custom font! Using default.\n");
+        customFont = GetFontDefault();
+    } else {
+        printf("Custom font loaded successfully!\n");
+        SetTextureFilter(customFont.texture, TEXTURE_FILTER_BILINEAR);
+    }
 
     // Load textures
     Texture2D sahedTexture = LoadTexture("images/sahed.png");
@@ -258,14 +272,14 @@ int main(void)
             if (!levelSelected) {
                 // Level selection screen
                 ClearBackground((Color){135, 206, 235, 255}); // Sky blue for menu
-                DrawText("SKY OVER KHARKIV", screenWidth/2 - 200, screenHeight/2 - 120, 40, BLACK);
-                DrawText("Defend against Shahed drones!", screenWidth/2 - 180, screenHeight/2 - 60, 20, DARKGRAY);
-                DrawText("Solve the equation to identify the Shahed", screenWidth/2 - 220, screenHeight/2 - 30, 20, DARKGRAY);
+                DrawTextEx(customFont, "SKY OVER KHARKIV", (Vector2){screenWidth/2 - 220, screenHeight/2 - 120}, 50, 2, BLACK);
+                DrawTextEx(customFont, "Defend against Shahed drones!", (Vector2){screenWidth/2 - 200, screenHeight/2 - 60}, 30, 1, DARKGRAY);
+                DrawTextEx(customFont, "Solve the equation to identify the Shahed", (Vector2){screenWidth/2 - 250, screenHeight/2 - 30}, 30, 1, DARKGRAY);
 
-                DrawText("SELECT LEVEL:", screenWidth/2 - 100, screenHeight/2 + 20, 25, BLACK);
-                DrawText("Press 1: Easy (Addition & Subtraction, 0-20)", screenWidth/2 - 240, screenHeight/2 + 60, 20, DARKGREEN);
-                DrawText("Press 2: Medium (+ Multiplication)", screenWidth/2 - 180, screenHeight/2 + 90, 20, ORANGE);
-                DrawText("Press 3: Hard (+ Division)", screenWidth/2 - 140, screenHeight/2 + 120, 20, RED);
+                DrawTextEx(customFont, "SELECT LEVEL:", (Vector2){screenWidth/2 - 110, screenHeight/2 + 20}, 35, 1.5, BLACK);
+                DrawTextEx(customFont, "Press 1: Easy (Addition & Subtraction, 0-20)", (Vector2){screenWidth/2 - 270, screenHeight/2 + 60}, 30, 1, DARKGREEN);
+                DrawTextEx(customFont, "Press 2: Medium (+ Multiplication)", (Vector2){screenWidth/2 - 210, screenHeight/2 + 90}, 30, 1, ORANGE);
+                DrawTextEx(customFont, "Press 3: Hard (+ Division)", (Vector2){screenWidth/2 - 160, screenHeight/2 + 120}, 30, 1, RED);
             } else if (gameStarted) {
                 // Draw background
                 DrawTexture(backgroundTexture, 0, 0, WHITE);
@@ -274,16 +288,16 @@ int main(void)
                 char equationText[64];
                 sprintf(equationText, "Equation: %d %c %d = ?",
                         currentEquation.num1, currentEquation.operation, currentEquation.num2);
-                DrawText(equationText, 20, 20, 30, BLACK);
+                DrawTextEx(customFont, equationText, (Vector2){20, 20}, 40, 1, BLACK);
 
                 // Draw score and level
                 char scoreText[32];
                 sprintf(scoreText, "Score: %d", score);
-                DrawText(scoreText, screenWidth - 150, 20, 25, BLACK);
+                DrawTextEx(customFont, scoreText, (Vector2){screenWidth - 180, 20}, 35, 1, BLACK);
 
                 char levelText[32];
                 sprintf(levelText, "Level: %d", level);
-                DrawText(levelText, screenWidth - 150, 50, 25, DARKBLUE);
+                DrawTextEx(customFont, levelText, (Vector2){screenWidth - 180, 60}, 35, 1, DARKBLUE);
 
                 // Draw drone sprites
                 for (int i = 0; i < MAX_DRONES; i++) {
@@ -298,9 +312,9 @@ int main(void)
                         if (drones[i].active && drones[i].state == DRONE_FLYING) {
                             char answerText[16];
                             sprintf(answerText, "%d", drones[i].answer);
-                            int textWidth = MeasureText(answerText, 20);
-                            DrawText(answerText, drones[i].position.x + 50 - textWidth/2,
-                                   drones[i].position.y - 25, 20, RED);
+                            Vector2 textSize = MeasureTextEx(customFont, answerText, 30, 1);
+                            DrawTextEx(customFont, answerText, (Vector2){drones[i].position.x + 50 - textSize.x/2,
+                                   drones[i].position.y - 30}, 30, 1, RED);
                         }
                     }
                 }
@@ -312,18 +326,18 @@ int main(void)
                 DrawProjectiles(projectiles);
 
                 // Draw ammo
-                DrawAmmo(ammo, screenWidth, screenHeight);
+                DrawAmmo(ammo, screenWidth, screenHeight, customFont);
 
                 // Draw pause message
                 if (paused) {
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 128});
-                    DrawText("PAUSED", screenWidth/2 - 80, screenHeight/2 - 40, 50, WHITE);
-                    DrawText("Press SPACE to Resume", screenWidth/2 - 120, screenHeight/2 + 20, 20, WHITE);
+                    DrawTextEx(customFont, "PAUSED", (Vector2){screenWidth/2 - 100, screenHeight/2 - 40}, 60, 1, WHITE);
+                    DrawTextEx(customFont, "Press SPACE to Resume", (Vector2){screenWidth/2 - 150, screenHeight/2 + 20}, 30, 1, WHITE);
                 }
 
                 // Draw game over message
                 if (ammo < SHOT_COST) {
-                    DrawText("OUT OF AMMO! Press R to Restart", screenWidth/2 - 200, screenHeight/2, 25, RED);
+                    DrawTextEx(customFont, "OUT OF AMMO! Press R to Restart", (Vector2){screenWidth/2 - 250, screenHeight/2}, 35, 1, RED);
                 }
             }
 
@@ -333,6 +347,7 @@ int main(void)
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
+    UnloadFont(customFont);
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
     UnloadTexture(backgroundTexture);
@@ -577,14 +592,14 @@ void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position) {
     DrawTextureRec(texture, sourceRec, position, WHITE);
 }
 
-void DrawAmmo(int ammo, int screenWidth, int screenHeight) {
+void DrawAmmo(int ammo, int screenWidth, int screenHeight, Font font) {
     int boxWidth = 15;
     int boxHeight = 8;
     int spacing = 3;
     int startX = screenWidth - 20;
     int startY = screenHeight - 30;
 
-    DrawText("AMMO:", screenWidth - 100, screenHeight - 50, 20, BLACK);
+    DrawTextEx(font, "AMMO:", (Vector2){screenWidth - 120, screenHeight - 55}, 30, 1, BLACK);
 
     for (int i = 0; i < ammo; i++) {
         int x = startX - (i % 10) * (boxWidth + spacing);
