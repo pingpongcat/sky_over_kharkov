@@ -29,7 +29,7 @@
 #define PROJECTILE_MAX_LIFETIME 2.0f
 
 // Sprite scaling constants
-#define DRONE_SCALE 1.5f        // Drone sprite scale (1.5 = 150%)
+#define DRONE_SCALE 2.0f        // Drone sprite scale (1.5 = 150%)
 #define GEPARD_SCALE 2.0f       // Gepard tank scale (2.0 = 200%)
 #define GEPARD_TEXTURE_SIZE 150 // Original Gepard texture size (150x150)
 #define DRONE_TEXTURE_SIZE 100  // Original drone texture size (100x100)
@@ -78,8 +78,10 @@
 // Drone animation constants
 #define DRONE_FALL_START_Y 100.0f
 #define DRONE_FALL_END_Y GROUND_LEVEL
-#define DRONE_TEXT_OFFSET_X 75.0f
-#define DRONE_TEXT_OFFSET_Y -10.0f
+#define DRONE_TEXT_OFFSET_X 95.0f
+#define DRONE_TEXT_OFFSET_Y 30.0f
+#define DRONE_TEXT_SIZE 50
+#define DRONE_TEXT_SPACING 3
 
 // Projectile visual constants
 #define PROJECTILE_TRAIL_LENGTH 0.02f
@@ -199,18 +201,23 @@ int main(void)
     // Seed random
     srand(time(NULL));
 
-    // Load custom font - try system Noto Sans first, then local font folder
+    // Load custom fonts - try system Noto Sans first, then local font folder
     Font customFont = LoadFontEx("/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", 96, 0, 0);
+    Font boldFont = LoadFontEx("/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", 96, 0, 0);
+
     if (customFont.texture.id == 0) {
         printf("System font not found, trying local font folder...\n");
         customFont = LoadFontEx("font/NotoSansSyriacWestern-Regular.ttf", 96, 0, 0);
+        boldFont = customFont; // Use same font if system font not found
     }
     if (customFont.texture.id == 0) {
         printf("ERROR: Failed to load custom font! Using default.\n");
         customFont = GetFontDefault();
+        boldFont = GetFontDefault();
     } else {
-        printf("Custom font loaded successfully!\n");
+        printf("Custom fonts loaded successfully!\n");
         SetTextureFilter(customFont.texture, TEXTURE_FILTER_BILINEAR);
+        SetTextureFilter(boldFont.texture, TEXTURE_FILTER_BILINEAR);
     }
 
     // Load textures
@@ -415,9 +422,9 @@ int main(void)
 
                 // Draw equation
                 char equationText[64];
-                sprintf(equationText, "Equation: %d %c %d = ?",
+                sprintf(equationText, "%d %c %d = ?",
                         currentEquation.num1, currentEquation.operation, currentEquation.num2);
-                DrawTextEx(customFont, equationText, (Vector2){20, 20}, 40, 1, BLACK);
+                DrawTextEx(customFont, equationText, (Vector2){20, 20}, 60, 2, BLACK);
 
                 // Draw score and level
                 char scoreText[32];
@@ -441,9 +448,14 @@ int main(void)
                         if (drones[i].active && drones[i].state == DRONE_FLYING) {
                             char answerText[16];
                             sprintf(answerText, "%d", drones[i].answer);
-                            Vector2 textSize = MeasureTextEx(customFont, answerText, 30, 1);
-                            DrawTextEx(customFont, answerText, (Vector2){drones[i].position.x + DRONE_TEXT_OFFSET_X - textSize.x/2,
-                                   drones[i].position.y + DRONE_TEXT_OFFSET_Y}, 30, 1, RED);
+                            Vector2 textSize = MeasureTextEx(boldFont, answerText, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING);
+                            Vector2 textPos = {drones[i].position.x + DRONE_TEXT_OFFSET_X - textSize.x/2,
+                                               drones[i].position.y + DRONE_TEXT_OFFSET_Y};
+                            // Draw text multiple times with slight offsets to create bold effect
+                            DrawTextEx(boldFont, answerText, (Vector2){textPos.x + 1, textPos.y}, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
+                            DrawTextEx(boldFont, answerText, (Vector2){textPos.x, textPos.y + 1}, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
+                            DrawTextEx(boldFont, answerText, (Vector2){textPos.x + 1, textPos.y + 1}, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
+                            DrawTextEx(boldFont, answerText, textPos, DRONE_TEXT_SIZE, DRONE_TEXT_SPACING, RED);
                         }
                     }
                 }
@@ -492,6 +504,7 @@ int main(void)
     //--------------------------------------------------------------------------------------
     UnloadRenderTexture(target);
     UnloadFont(customFont);
+    UnloadFont(boldFont);
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
     UnloadTexture(backgroundTexture);
