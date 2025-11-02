@@ -14,7 +14,13 @@
 #define PROJECTILE_SPEED 3000.0f
 #define SHOT_COST 2
 #define HIT_REWARD 3
-#define INITIAL_AMMO 20
+#define INITIAL_AMMO 10
+
+// Sprite scaling constants
+#define DRONE_SCALE 1.5f        // Drone sprite scale (1.5 = 150%)
+#define GEPARD_SCALE 2.0f       // Gepard tank scale (2.0 = 200%)
+#define GEPARD_TEXTURE_SIZE 150 // Original Gepard texture size (150x150)
+#define DRONE_TEXTURE_SIZE 100  // Original drone texture size (100x100)
 
 //------------------------------------------------------------------------------------
 // Types and Structures Definition
@@ -114,7 +120,7 @@ int main(void)
 
     // Game variables
     GepardTank gepard = { 0, 0.0f, false, 0 };
-    Vector2 gepardPosition = { 120.0f, (float)screenHeight - 265.0f }; // Adjusted for 150% size (225px tall)
+    Vector2 gepardPosition = { 120.0f, (float)screenHeight - 40.0f - (GEPARD_TEXTURE_SIZE * GEPARD_SCALE) };
 
     Drone drones[MAX_DRONES] = {0};
     int activeDroneCount = 0;
@@ -238,7 +244,8 @@ int main(void)
                     // Check if clicked on a drone
                     for (int i = 0; i < MAX_DRONES; i++) {
                         if (drones[i].active && drones[i].state == DRONE_FLYING) {
-                            Rectangle droneRect = { drones[i].position.x, drones[i].position.y, 150, 150 };
+                            Rectangle droneRect = { drones[i].position.x, drones[i].position.y,
+                                                   DRONE_TEXTURE_SIZE * DRONE_SCALE, DRONE_TEXTURE_SIZE * DRONE_SCALE };
                             if (CheckCollisionPointRec(mousePos, droneRect)) {
                                 // Fire at drone
                                 ammo -= SHOT_COST;
@@ -247,11 +254,16 @@ int main(void)
                                 gepard.fireFrame = 1; // Start at middle frame for immediate visual feedback
 
                                 // Spawn TWO projectiles from tank to drone (dual barrels)
-                                Vector2 barrelPos1 = { gepardPosition.x + 100, gepardPosition.y + 45 };
-                                Vector2 barrelPos2 = { gepardPosition.x + 124, gepardPosition.y + 45 };
-                                // Target slightly different points on the drone so both can hit
-                                Vector2 droneTarget1 = { drones[i].position.x + 65, drones[i].position.y + 75 };
-                                Vector2 droneTarget2 = { drones[i].position.x + 85, drones[i].position.y + 75 };
+                                // Barrel positions as ratios of the sprite size (0.67, 0.83 horizontally, 0.30 vertically)
+                                Vector2 barrelPos1 = { gepardPosition.x + (GEPARD_TEXTURE_SIZE * GEPARD_SCALE * 0.67f),
+                                                       gepardPosition.y + (GEPARD_TEXTURE_SIZE * GEPARD_SCALE * 0.30f) };
+                                Vector2 barrelPos2 = { gepardPosition.x + (GEPARD_TEXTURE_SIZE * GEPARD_SCALE * 0.83f),
+                                                       gepardPosition.y + (GEPARD_TEXTURE_SIZE * GEPARD_SCALE * 0.30f) };
+                                // Target center of drone with slight offset for dual barrels
+                                Vector2 droneCenter = { drones[i].position.x + (DRONE_TEXTURE_SIZE * DRONE_SCALE / 2.0f),
+                                                       drones[i].position.y + (DRONE_TEXTURE_SIZE * DRONE_SCALE / 2.0f) };
+                                Vector2 droneTarget1 = { droneCenter.x - 10, droneCenter.y };
+                                Vector2 droneTarget2 = { droneCenter.x + 10, droneCenter.y };
                                 SpawnProjectile(projectiles, barrelPos1, droneTarget1, i);
                                 SpawnProjectile(projectiles, barrelPos2, droneTarget2, i);
                                 break;
@@ -665,10 +677,10 @@ void DrawDrone(Texture2D texture, Drone drone) {
     }
 
     // Calculate scale based on drone state
-    float scale = 1.5f; // Base scale (150% of original)
+    float scale = DRONE_SCALE; // Base scale from constant
 
     if (drone.state == DRONE_FALLING && drone.isShahed) {
-        // For falling Shahed, shrink from 150% to 20% as it falls
+        // For falling Shahed, shrink from DRONE_SCALE to 20% as it falls
         // Ground level is at y = 394 (300px above bottom)
         // Assume falling starts around y = 100
         float startY = 100.0f;
@@ -677,14 +689,14 @@ void DrawDrone(Texture2D texture, Drone drone) {
         if (progress < 0.0f) progress = 0.0f;
         if (progress > 1.0f) progress = 1.0f;
 
-        // Interpolate from 1.5 (150%) to 0.2 (20%)
-        scale = 1.5f - (progress * 1.3f); // 1.5 -> 0.2
+        // Interpolate from DRONE_SCALE to 0.2 (20%)
+        scale = DRONE_SCALE - (progress * (DRONE_SCALE - 0.2f));
     } else if (drone.state == DRONE_EXPLODING && drone.isShahed && drone.position.y >= 350.0f) {
         // If Shahed exploded near ground, keep it at 20% scale
         scale = 0.2f;
     }
 
-    float drawSize = 100.0f * scale;
+    float drawSize = DRONE_TEXTURE_SIZE * scale;
     Rectangle destRec = (Rectangle){ drone.position.x, drone.position.y, drawSize, drawSize };
     DrawTexturePro(texture, sourceRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
 }
@@ -696,13 +708,14 @@ void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position) {
     int row = gepard.isFiring ? gepard.fireFrame : 0; // 0 = bottom, 1 = middle, 2 = top
     int col = gepard.turretIndex; // 0-4
 
-    sourceRec.x = col * 150;
-    sourceRec.y = (2 - row) * 150; // Flip because bottom row is at y=300
-    sourceRec.width = 150;
-    sourceRec.height = 150;
+    sourceRec.x = col * GEPARD_TEXTURE_SIZE;
+    sourceRec.y = (2 - row) * GEPARD_TEXTURE_SIZE; // Flip because bottom row is at y=300
+    sourceRec.width = GEPARD_TEXTURE_SIZE;
+    sourceRec.height = GEPARD_TEXTURE_SIZE;
 
-    // Scale tank to 150% (150x150 -> 225x225)
-    Rectangle destRec = (Rectangle){ position.x, position.y, 225, 225 };
+    // Scale tank using global GEPARD_SCALE constant
+    float scaledSize = GEPARD_TEXTURE_SIZE * GEPARD_SCALE;
+    Rectangle destRec = (Rectangle){ position.x, position.y, scaledSize, scaledSize };
     DrawTexturePro(texture, sourceRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
 }
 
@@ -710,10 +723,8 @@ void DrawAmmo(int ammo, int screenWidth, int screenHeight, Font font) {
     int boxWidth = 15;
     int boxHeight = 8;
     int spacing = 3;
-    int startX = screenWidth - 20;
-    int startY = screenHeight - 30;
-
-    DrawTextEx(font, "AMMO:", (Vector2){screenWidth - 120, screenHeight - 55}, 30, 1, BLACK);
+    int startX = screenWidth - 50;
+    int startY = screenHeight - 60;
 
     for (int i = 0; i < ammo; i++) {
         int x = startX - (i % 10) * (boxWidth + spacing);
@@ -759,16 +770,16 @@ void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int 
                 (drones[targetIdx].state == DRONE_FLYING || drones[targetIdx].state == DRONE_EXPLODING)) {
 
                 Vector2 droneCenter = {
-                    drones[targetIdx].position.x + 75,
-                    drones[targetIdx].position.y + 75
+                    drones[targetIdx].position.x + (DRONE_TEXTURE_SIZE * DRONE_SCALE / 2.0f),
+                    drones[targetIdx].position.y + (DRONE_TEXTURE_SIZE * DRONE_SCALE / 2.0f)
                 };
 
                 float dx = projectiles[i].position.x - droneCenter.x;
                 float dy = projectiles[i].position.y - droneCenter.y;
                 float distance = sqrtf(dx * dx + dy * dy);
 
-                // Hit detection (within 45 pixels of drone center - scaled for 150% size)
-                if (distance < 45.0f) {
+                // Hit detection (within 30% of drone size from center)
+                if (distance < (DRONE_TEXTURE_SIZE * DRONE_SCALE * 0.3f)) {
                     projectiles[i].active = false;
 
                     // Only apply damage effects if still flying (not already hit)
