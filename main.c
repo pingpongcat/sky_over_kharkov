@@ -149,6 +149,11 @@ int main(void)
             ToggleBorderlessWindowed();
         }
 
+        // Exit fullscreen with Escape key
+        if (IsKeyPressed(KEY_ESCAPE) && IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE)) {
+            ToggleBorderlessWindowed();
+        }
+
         if (!levelSelected) {
             // Level selection screen
             if (IsKeyPressed(KEY_ONE)) {
@@ -584,6 +589,8 @@ void UpdateDrones(Drone drones[], float deltaTime) {
                 if (drones[i].isShahed && drones[i].position.y >= 394.0f) {
                     drones[i].state = DRONE_EXPLODING;
                     drones[i].animTimer = 0.0f;
+                    // Move explosion 200 pixels lower (closer to ground)
+                    drones[i].position.y += 200.0f;
                 }
                 // Non-Shahed drones just disappear when hitting ground or going off screen
                 else if (drones[i].position.y >= 494.0f || drones[i].position.x < -150) {
@@ -657,8 +664,28 @@ void DrawDrone(Texture2D texture, Drone drone) {
         }
     }
 
-    // Scale drones to 150% (100x100 -> 150x150)
-    Rectangle destRec = (Rectangle){ drone.position.x, drone.position.y, 150, 150 };
+    // Calculate scale based on drone state
+    float scale = 1.5f; // Base scale (150% of original)
+
+    if (drone.state == DRONE_FALLING && drone.isShahed) {
+        // For falling Shahed, shrink from 150% to 20% as it falls
+        // Ground level is at y = 394 (300px above bottom)
+        // Assume falling starts around y = 100
+        float startY = 100.0f;
+        float endY = 394.0f;
+        float progress = (drone.position.y - startY) / (endY - startY);
+        if (progress < 0.0f) progress = 0.0f;
+        if (progress > 1.0f) progress = 1.0f;
+
+        // Interpolate from 1.5 (150%) to 0.2 (20%)
+        scale = 1.5f - (progress * 1.3f); // 1.5 -> 0.2
+    } else if (drone.state == DRONE_EXPLODING && drone.isShahed && drone.position.y >= 350.0f) {
+        // If Shahed exploded near ground, keep it at 20% scale
+        scale = 0.2f;
+    }
+
+    float drawSize = 100.0f * scale;
+    Rectangle destRec = (Rectangle){ drone.position.x, drone.position.y, drawSize, drawSize };
     DrawTexturePro(texture, sourceRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
 }
 
