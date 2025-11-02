@@ -20,7 +20,7 @@
 #define SCORE_WRONG_HIT -5
 
 // Physics constants
-#define DRONE_SPEED 50.0f
+#define DRONE_SPEED 70.0f
 #define PROJECTILE_SPEED 3000.0f
 #define DRONE_FALL_SPEED 150.0f
 #define DRONE_FALL_HORIZONTAL_MULTIPLIER 0.5f
@@ -44,7 +44,7 @@
 // Gepard barrel positions (as ratios of sprite size)
 #define GEPARD_BARREL_LEFT_X 0.67f
 #define GEPARD_BARREL_RIGHT_X 0.83f
-#define GEPARD_BARREL_Y 0.30f
+#define GEPARD_BARREL_Y 0.63f
 
 // Drone spawn constants
 #define DRONE_SPAWN_X 1200.0f
@@ -165,7 +165,7 @@ void GenerateNewEquation(MathEquation *eq, int level);
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount);
 void UpdateDrones(Drone drones[], float deltaTime);
 void UpdateGepard(GepardTank *gepard, float deltaTime);
-void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int *score, bool *shahedActive, float deltaTime);
+void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int *score, bool *shahedActive, float deltaTime, Sound explosionSound);
 void SpawnProjectile(Projectile projectiles[], Vector2 start, Vector2 target, int droneIndex);
 int GetTurretIndexFromMouse(int mouseX, int screenWidth);
 
@@ -192,6 +192,7 @@ int main(void)
     const int screenHeight = SCREEN_HEIGHT;
 
     InitWindow(screenWidth, screenHeight, "Sky Over Kharkiv");
+    InitAudioDevice();
     SetTargetFPS(60);
     SetWindowState(FLAG_WINDOW_RESIZABLE);
 
@@ -216,6 +217,10 @@ int main(void)
     Texture2D sahedTexture = LoadTexture("images/sahed.png");
     Texture2D gepardTexture = LoadTexture("images/gepard.png");
     Texture2D backgroundTexture = LoadTexture("images/background.png");
+
+    // Load sounds
+    Sound shootSound = LoadSound("sounds/fire_burst.wav");
+    Sound explosionSound = LoadSound("sounds/explosion.wav");
 
     // Create render texture for scaling
     RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
@@ -300,7 +305,7 @@ int main(void)
                 UpdateDrones(drones, deltaTime);
 
                 // Update projectiles
-                UpdateProjectiles(projectiles, drones, &ammo, &score, &shahedActive, deltaTime);
+                UpdateProjectiles(projectiles, drones, &ammo, &score, &shahedActive, deltaTime, explosionSound);
 
                 // Spawn timer
                 spawnTimer += deltaTime;
@@ -333,16 +338,27 @@ int main(void)
                                 gepard.isFiring = true;
                                 gepard.fireTimer = 0.0f;
                                 gepard.fireFrame = 1; // Start at middle frame for immediate visual feedback
+                                PlaySound(shootSound);
+                                // Play explosion sound only if hitting the correct drone (Shahed)
+                                if (drones[i].isShahed) {
+                                    PlaySound(explosionSound);
+                                }
 
-                                // Spawn TWO projectiles from tank to drone (dual barrels)
+                                // Spawn THREE projectiles from tank to drone (dual barrels + center)
                                 Vector2 barrelPos1 = GetBarrelPosition(gepardPosition, true);
                                 Vector2 barrelPos2 = GetBarrelPosition(gepardPosition, false);
+                                Vector2 barrelPosCenter = {
+                                    (barrelPos1.x + barrelPos2.x) / 2.0f,
+                                    (barrelPos1.y + barrelPos2.y) / 2.0f
+                                };
 
-                                // Target center of drone with slight offset for dual barrels
+                                // Target center of drone with slight offset for triple barrels
                                 Vector2 droneTarget1 = { bounds.center.x - DRONE_TARGET_OFFSET, bounds.center.y };
                                 Vector2 droneTarget2 = { bounds.center.x + DRONE_TARGET_OFFSET, bounds.center.y };
+                                Vector2 droneTarget3 = { bounds.center.x, bounds.center.y };
                                 SpawnProjectile(projectiles, barrelPos1, droneTarget1, i);
                                 SpawnProjectile(projectiles, barrelPos2, droneTarget2, i);
+                                SpawnProjectile(projectiles, barrelPosCenter, droneTarget3, i);
                                 break;
                             }
                         }
@@ -479,6 +495,9 @@ int main(void)
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
     UnloadTexture(backgroundTexture);
+    UnloadSound(shootSound);
+    UnloadSound(explosionSound);
+    CloseAudioDevice();
     CloseWindow();
     //--------------------------------------------------------------------------------------
 
@@ -805,7 +824,7 @@ void SpawnProjectile(Projectile projectiles[], Vector2 start, Vector2 target, in
     }
 }
 
-void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int *score, bool *shahedActive, float deltaTime) {
+void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int *score, bool *shahedActive, float deltaTime, Sound explosionSound) {
     for (int i = 0; i < MAX_PROJECTILES; i++) {
         if (projectiles[i].active) {
             projectiles[i].position.x += projectiles[i].velocity.x * deltaTime;
