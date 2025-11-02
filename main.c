@@ -9,7 +9,9 @@
 // Constants
 //------------------------------------------------------------------------------------
 #define MAX_DRONES 15
+#define MAX_PROJECTILES 10
 #define DRONE_SPEED 50.0f
+#define PROJECTILE_SPEED 3000.0f
 #define SHOT_COST 2
 #define HIT_REWARD 3
 #define INITIAL_AMMO 20
@@ -47,6 +49,14 @@ typedef struct {
     int correctAnswer;
 } MathEquation;
 
+typedef struct {
+    Vector2 position;
+    Vector2 velocity;
+    bool active;
+    float lifetime;
+    int targetDroneIndex;
+} Projectile;
+
 //------------------------------------------------------------------------------------
 // Function Declarations
 //------------------------------------------------------------------------------------
@@ -54,10 +64,13 @@ void GenerateNewEquation(MathEquation *eq, int level);
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount);
 void UpdateDrones(Drone drones[], float deltaTime);
 void UpdateGepard(GepardTank *gepard, float deltaTime);
+void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int *score, bool *shahedActive, float deltaTime);
+void SpawnProjectile(Projectile projectiles[], Vector2 start, Vector2 target, int droneIndex);
 int GetTurretIndexFromMouse(int mouseX, int screenWidth);
 void DrawDrone(Texture2D texture, Drone drone);
 void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position);
 void DrawAmmo(int ammo, int screenWidth, int screenHeight);
+void DrawProjectiles(Projectile projectiles[]);
 
 //------------------------------------------------------------------------------------
 // Program main entry point
@@ -66,8 +79,8 @@ int main(void)
 {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 1024;
-    const int screenHeight = 600;
+    const int screenWidth = 1107;
+    const int screenHeight = 694;
 
     InitWindow(screenWidth, screenHeight, "Sky Over Kharkiv");
     SetTargetFPS(60);
@@ -78,13 +91,16 @@ int main(void)
     // Load textures
     Texture2D sahedTexture = LoadTexture("images/sahed.png");
     Texture2D gepardTexture = LoadTexture("images/gepard.png");
+    Texture2D backgroundTexture = LoadTexture("images/background.png");
 
     // Game variables
     GepardTank gepard = { 0, 0.0f, false, 0 };
-    Vector2 gepardPosition = { 50.0f, (float)screenHeight - 150.0f };
+    Vector2 gepardPosition = { 120.0f, (float)screenHeight - 190.0f };
 
     Drone drones[MAX_DRONES] = {0};
     int activeDroneCount = 0;
+
+    Projectile projectiles[MAX_PROJECTILES] = {0};
 
     MathEquation currentEquation = {0};
     int ammo = INITIAL_AMMO;
@@ -129,7 +145,7 @@ int main(void)
             }
         } else if (gameStarted) {
             // Toggle pause
-            if (IsKeyPressed(KEY_P)) {
+            if (IsKeyPressed(KEY_SPACE)) {
                 paused = !paused;
             }
 
@@ -143,6 +159,9 @@ int main(void)
 
                 // Update drones
                 UpdateDrones(drones, deltaTime);
+
+                // Update projectiles
+                UpdateProjectiles(projectiles, drones, &ammo, &score, &shahedActive, deltaTime);
 
                 // Spawn timer
                 spawnTimer += deltaTime;
@@ -179,25 +198,16 @@ int main(void)
                         if (drones[i].active && drones[i].state == DRONE_FLYING) {
                             Rectangle droneRect = { drones[i].position.x, drones[i].position.y, 100, 100 };
                             if (CheckCollisionPointRec(mousePos, droneRect)) {
-                                // Hit a drone
+                                // Fire at drone
                                 ammo -= SHOT_COST;
                                 gepard.isFiring = true;
                                 gepard.fireTimer = 0.0f;
-                                gepard.fireFrame = 0;
+                                gepard.fireFrame = 1; // Start at middle frame for immediate visual feedback
 
-                                if (drones[i].isShahed) {
-                                    // Correct hit!
-                                    drones[i].state = DRONE_EXPLODING;
-                                    drones[i].animTimer = 0.0f;
-                                    ammo += HIT_REWARD;
-                                    score += 10;
-                                    shahedActive = false; // Shahed destroyed, can generate new equation
-                                } else {
-                                    // Wrong hit
-                                    drones[i].state = DRONE_FALLING;
-                                    drones[i].animTimer = 0.0f;
-                                    score -= 5;
-                                }
+                                // Spawn projectile from tank to drone
+                                Vector2 barrelPos = { gepardPosition.x + 75, gepardPosition.y + 30 };
+                                Vector2 droneCenter = { drones[i].position.x + 50, drones[i].position.y + 50 };
+                                SpawnProjectile(projectiles, barrelPos, droneCenter, i);
                                 break;
                             }
                         }
@@ -243,10 +253,11 @@ int main(void)
         //----------------------------------------------------------------------------------
         BeginDrawing();
 
-            ClearBackground((Color){135, 206, 235, 255}); // Sky blue
+            ClearBackground(BLACK);
 
             if (!levelSelected) {
                 // Level selection screen
+                ClearBackground((Color){135, 206, 235, 255}); // Sky blue for menu
                 DrawText("SKY OVER KHARKIV", screenWidth/2 - 200, screenHeight/2 - 120, 40, BLACK);
                 DrawText("Defend against Shahed drones!", screenWidth/2 - 180, screenHeight/2 - 60, 20, DARKGRAY);
                 DrawText("Solve the equation to identify the Shahed", screenWidth/2 - 220, screenHeight/2 - 30, 20, DARKGRAY);
@@ -256,6 +267,9 @@ int main(void)
                 DrawText("Press 2: Medium (+ Multiplication)", screenWidth/2 - 180, screenHeight/2 + 90, 20, ORANGE);
                 DrawText("Press 3: Hard (+ Division)", screenWidth/2 - 140, screenHeight/2 + 120, 20, RED);
             } else if (gameStarted) {
+                // Draw background
+                DrawTexture(backgroundTexture, 0, 0, WHITE);
+
                 // Draw equation
                 char equationText[64];
                 sprintf(equationText, "Equation: %d %c %d = ?",
@@ -271,13 +285,17 @@ int main(void)
                 sprintf(levelText, "Level: %d", level);
                 DrawText(levelText, screenWidth - 150, 50, 25, DARKBLUE);
 
-                // Draw drones
+                // Draw drone sprites
                 for (int i = 0; i < MAX_DRONES; i++) {
                     if (drones[i].active && drones[i].state != DRONE_DEAD) {
                         DrawDrone(sahedTexture, drones[i]);
+                    }
+                }
 
-                        // Draw answer above drone (hide when paused)
-                        if (drones[i].state == DRONE_FLYING && !paused) {
+                // Draw all numbers on top (so they're never hidden by other drones)
+                if (!paused) {
+                    for (int i = 0; i < MAX_DRONES; i++) {
+                        if (drones[i].active && drones[i].state == DRONE_FLYING) {
                             char answerText[16];
                             sprintf(answerText, "%d", drones[i].answer);
                             int textWidth = MeasureText(answerText, 20);
@@ -290,6 +308,9 @@ int main(void)
                 // Draw Gepard tank
                 DrawGepard(gepardTexture, gepard, gepardPosition);
 
+                // Draw projectiles
+                DrawProjectiles(projectiles);
+
                 // Draw ammo
                 DrawAmmo(ammo, screenWidth, screenHeight);
 
@@ -297,7 +318,7 @@ int main(void)
                 if (paused) {
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 128});
                     DrawText("PAUSED", screenWidth/2 - 80, screenHeight/2 - 40, 50, WHITE);
-                    DrawText("Press P to Resume", screenWidth/2 - 100, screenHeight/2 + 20, 20, WHITE);
+                    DrawText("Press SPACE to Resume", screenWidth/2 - 120, screenHeight/2 + 20, 20, WHITE);
                 }
 
                 // Draw game over message
@@ -314,6 +335,7 @@ int main(void)
     //--------------------------------------------------------------------------------------
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
+    UnloadTexture(backgroundTexture);
     CloseWindow();
     //--------------------------------------------------------------------------------------
 
@@ -381,7 +403,16 @@ void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount) {
     int numDrones = 3 + rand() % 3; // 3-5 drones
     if (numDrones > MAX_DRONES) numDrones = MAX_DRONES;
 
-    // Generate wrong answers
+    // Collect all existing answers on screen
+    int existingAnswers[MAX_DRONES];
+    int existingCount = 0;
+    for (int i = 0; i < MAX_DRONES; i++) {
+        if (drones[i].active && drones[i].state == DRONE_FLYING) {
+            existingAnswers[existingCount++] = drones[i].answer;
+        }
+    }
+
+    // Generate answers, avoiding duplicates with existing drones
     int answers[MAX_DRONES];
     int correctIndex = rand() % numDrones;
 
@@ -389,10 +420,36 @@ void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount) {
         if (i == correctIndex) {
             answers[i] = eq->correctAnswer;
         } else {
-            // Generate wrong answer
-            int offset = (rand() % 20) - 10;
-            if (offset == 0) offset = 5;
-            answers[i] = eq->correctAnswer + offset;
+            // Generate wrong answer that doesn't duplicate existing or new answers
+            bool duplicate;
+            int attempts = 0;
+            do {
+                duplicate = false;
+                int offset = (rand() % 20) - 10;
+                if (offset == 0) offset = 5;
+                answers[i] = eq->correctAnswer + offset;
+
+                // Check against existing answers on screen
+                for (int j = 0; j < existingCount; j++) {
+                    if (answers[i] == existingAnswers[j]) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+
+                // Check against already generated answers in this wave
+                if (!duplicate) {
+                    for (int j = 0; j < i; j++) {
+                        if (answers[i] == answers[j]) {
+                            duplicate = true;
+                            break;
+                        }
+                    }
+                }
+
+                attempts++;
+                if (attempts > 50) break; // Prevent infinite loop
+            } while (duplicate && attempts < 50);
         }
     }
 
@@ -400,8 +457,8 @@ void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount) {
     int spawned = 0;
     for (int i = 0; i < MAX_DRONES && spawned < numDrones; i++) {
         if (!drones[i].active || drones[i].state == DRONE_DEAD) {
-            drones[i].position.x = 1100 + spawned * 150; // Start off-screen, staggered
-            drones[i].position.y = 80 + rand() % 200;
+            drones[i].position.x = 1200 + spawned * 150; // Start off-screen, staggered
+            drones[i].position.y = 80 + rand() % 250;
             drones[i].answer = answers[spawned];
             drones[i].isShahed = (spawned == correctIndex);
             drones[i].state = DRONE_FLYING;
@@ -436,7 +493,9 @@ void UpdateDrones(Drone drones[], float deltaTime) {
             case DRONE_FALLING:
                 drones[i].animTimer += deltaTime;
                 drones[i].position.y += 100.0f * deltaTime; // Fall down
-                if (drones[i].position.y > 650) {
+
+                // Check if drone is within 200 pixels from ground (screenHeight = 694, so 694 - 200 = 494)
+                if (drones[i].position.y >= 494.0f) {
                     drones[i].state = DRONE_DEAD;
                 }
                 break;
@@ -452,11 +511,11 @@ void UpdateGepard(GepardTank *gepard, float deltaTime) {
     if (gepard->isFiring) {
         gepard->fireTimer += deltaTime;
 
-        if (gepard->fireTimer > 0.1f) { // Each frame lasts 0.1s
+        if (gepard->fireTimer > 0.05f) { // Each frame lasts 0.05s (faster animation)
             gepard->fireFrame++;
             gepard->fireTimer = 0.0f;
 
-            if (gepard->fireFrame >= 3) { // bottom -> middle -> top
+            if (gepard->fireFrame > 2) { // 0=normal, 1=middle, 2=top, then back to 0
                 gepard->fireFrame = 0;
                 gepard->isFiring = false;
             }
@@ -489,6 +548,15 @@ void DrawDrone(Texture2D texture, Drone drone) {
         case DRONE_DEAD:
             sourceRec = (Rectangle){ 200, 0, 100, 100 };
             break;
+    }
+
+    // Blink effect for falling drones near ground (within 200px from ground = y >= 494)
+    if (drone.state == DRONE_FALLING && drone.position.y >= 494.0f) {
+        // Blink by checking if we're in a "visible" period (on/off every 0.1 seconds)
+        int blinkCycle = (int)(drone.animTimer * 10) % 2;
+        if (blinkCycle == 0) {
+            return; // Don't draw (creates blink effect)
+        }
     }
 
     DrawTextureRec(texture, sourceRec, drone.position, WHITE);
@@ -524,5 +592,91 @@ void DrawAmmo(int ammo, int screenWidth, int screenHeight) {
 
         Color ammoColor = (ammo > 10) ? DARKGREEN : (ammo > 5) ? ORANGE : RED;
         DrawRectangle(x, y, boxWidth, boxHeight, ammoColor);
+    }
+}
+
+void SpawnProjectile(Projectile projectiles[], Vector2 start, Vector2 target, int droneIndex) {
+    // Find free slot
+    for (int i = 0; i < MAX_PROJECTILES; i++) {
+        if (!projectiles[i].active) {
+            projectiles[i].position = start;
+            projectiles[i].active = true;
+            projectiles[i].lifetime = 0.0f;
+            projectiles[i].targetDroneIndex = droneIndex;
+
+            // Calculate velocity toward target
+            Vector2 direction = { target.x - start.x, target.y - start.y };
+            float length = sqrtf(direction.x * direction.x + direction.y * direction.y);
+            if (length > 0) {
+                projectiles[i].velocity.x = (direction.x / length) * PROJECTILE_SPEED;
+                projectiles[i].velocity.y = (direction.y / length) * PROJECTILE_SPEED;
+            }
+            break;
+        }
+    }
+}
+
+void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int *score, bool *shahedActive, float deltaTime) {
+    for (int i = 0; i < MAX_PROJECTILES; i++) {
+        if (projectiles[i].active) {
+            projectiles[i].position.x += projectiles[i].velocity.x * deltaTime;
+            projectiles[i].position.y += projectiles[i].velocity.y * deltaTime;
+            projectiles[i].lifetime += deltaTime;
+
+            // Check collision with target drone
+            int targetIdx = projectiles[i].targetDroneIndex;
+            if (targetIdx >= 0 && targetIdx < MAX_DRONES &&
+                drones[targetIdx].active && drones[targetIdx].state == DRONE_FLYING) {
+
+                Vector2 droneCenter = {
+                    drones[targetIdx].position.x + 50,
+                    drones[targetIdx].position.y + 50
+                };
+
+                float dx = projectiles[i].position.x - droneCenter.x;
+                float dy = projectiles[i].position.y - droneCenter.y;
+                float distance = sqrtf(dx * dx + dy * dy);
+
+                // Hit detection (within 30 pixels of drone center)
+                if (distance < 30.0f) {
+                    projectiles[i].active = false;
+
+                    if (drones[targetIdx].isShahed) {
+                        // Correct hit!
+                        drones[targetIdx].state = DRONE_EXPLODING;
+                        drones[targetIdx].animTimer = 0.0f;
+                        *ammo += HIT_REWARD;
+                        *score += 10;
+                        *shahedActive = false; // Shahed destroyed, can generate new equation
+                    } else {
+                        // Wrong hit
+                        drones[targetIdx].state = DRONE_FALLING;
+                        drones[targetIdx].animTimer = 0.0f;
+                        *score -= 5;
+                    }
+                }
+            }
+
+            // Deactivate if off-screen or lived too long
+            if (projectiles[i].position.x < -10 || projectiles[i].position.x > 1200 ||
+                projectiles[i].position.y < -10 || projectiles[i].position.y > 750 ||
+                projectiles[i].lifetime > 2.0f) {
+                projectiles[i].active = false;
+            }
+        }
+    }
+}
+
+void DrawProjectiles(Projectile projectiles[]) {
+    for (int i = 0; i < MAX_PROJECTILES; i++) {
+        if (projectiles[i].active) {
+            // Draw as a bright yellow/orange tracer
+            Vector2 end = {
+                projectiles[i].position.x - projectiles[i].velocity.x * 0.02f,
+                projectiles[i].position.y - projectiles[i].velocity.y * 0.02f
+            };
+            DrawLineEx(projectiles[i].position, end, 3.0f, YELLOW);
+            DrawCircleV(projectiles[i].position, 2.0f, ORANGE);
+        }
     }
 }
