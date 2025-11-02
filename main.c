@@ -84,6 +84,7 @@ int main(void)
 
     InitWindow(screenWidth, screenHeight, "Sky Over Kharkiv");
     SetTargetFPS(60);
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
 
     // Seed random
     srand(time(NULL));
@@ -107,9 +108,13 @@ int main(void)
     Texture2D gepardTexture = LoadTexture("images/gepard.png");
     Texture2D backgroundTexture = LoadTexture("images/background.png");
 
+    // Create render texture for scaling
+    RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
+    SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);
+
     // Game variables
     GepardTank gepard = { 0, 0.0f, false, 0 };
-    Vector2 gepardPosition = { 120.0f, (float)screenHeight - 190.0f };
+    Vector2 gepardPosition = { 120.0f, (float)screenHeight - 265.0f }; // Adjusted for 150% size (225px tall)
 
     Drone drones[MAX_DRONES] = {0};
     int activeDroneCount = 0;
@@ -138,6 +143,12 @@ int main(void)
 
         // Update
         //----------------------------------------------------------------------------------
+
+        // Fullscreen toggle with F key
+        if (IsKeyPressed(KEY_F)) {
+            ToggleBorderlessWindowed();
+        }
+
         if (!levelSelected) {
             // Level selection screen
             if (IsKeyPressed(KEY_ONE)) {
@@ -164,8 +175,20 @@ int main(void)
             }
 
             if (!paused) {
-                // Update turret position based on mouse
-                Vector2 mousePos = GetMousePosition();
+                // Update turret position based on mouse (transform mouse coords to game space)
+                Vector2 rawMousePos = GetMousePosition();
+                int windowWidth = GetScreenWidth();
+                int windowHeight = GetScreenHeight();
+                float scaleX = (float)windowWidth / (float)screenWidth;
+                float scaleY = (float)windowHeight / (float)screenHeight;
+                float scale = (scaleX < scaleY) ? scaleX : scaleY;
+                float offsetX = (windowWidth - screenWidth * scale) / 2.0f;
+                float offsetY = (windowHeight - screenHeight * scale) / 2.0f;
+
+                Vector2 mousePos;
+                mousePos.x = (rawMousePos.x - offsetX) / scale;
+                mousePos.y = (rawMousePos.y - offsetY) / scale;
+
                 gepard.turretIndex = GetTurretIndexFromMouse(mousePos.x, screenWidth);
 
                 // Update gepard animation
@@ -210,7 +233,7 @@ int main(void)
                     // Check if clicked on a drone
                     for (int i = 0; i < MAX_DRONES; i++) {
                         if (drones[i].active && drones[i].state == DRONE_FLYING) {
-                            Rectangle droneRect = { drones[i].position.x, drones[i].position.y, 100, 100 };
+                            Rectangle droneRect = { drones[i].position.x, drones[i].position.y, 150, 150 };
                             if (CheckCollisionPointRec(mousePos, droneRect)) {
                                 // Fire at drone
                                 ammo -= SHOT_COST;
@@ -218,10 +241,14 @@ int main(void)
                                 gepard.fireTimer = 0.0f;
                                 gepard.fireFrame = 1; // Start at middle frame for immediate visual feedback
 
-                                // Spawn projectile from tank to drone
-                                Vector2 barrelPos = { gepardPosition.x + 75, gepardPosition.y + 30 };
-                                Vector2 droneCenter = { drones[i].position.x + 50, drones[i].position.y + 50 };
-                                SpawnProjectile(projectiles, barrelPos, droneCenter, i);
+                                // Spawn TWO projectiles from tank to drone (dual barrels)
+                                Vector2 barrelPos1 = { gepardPosition.x + 100, gepardPosition.y + 45 };
+                                Vector2 barrelPos2 = { gepardPosition.x + 124, gepardPosition.y + 45 };
+                                // Target slightly different points on the drone so both can hit
+                                Vector2 droneTarget1 = { drones[i].position.x + 65, drones[i].position.y + 75 };
+                                Vector2 droneTarget2 = { drones[i].position.x + 85, drones[i].position.y + 75 };
+                                SpawnProjectile(projectiles, barrelPos1, droneTarget1, i);
+                                SpawnProjectile(projectiles, barrelPos2, droneTarget2, i);
                                 break;
                             }
                         }
@@ -265,7 +292,9 @@ int main(void)
 
         // Draw
         //----------------------------------------------------------------------------------
-        BeginDrawing();
+
+        // Render game to texture at native resolution
+        BeginTextureMode(target);
 
             ClearBackground(BLACK);
 
@@ -313,8 +342,8 @@ int main(void)
                             char answerText[16];
                             sprintf(answerText, "%d", drones[i].answer);
                             Vector2 textSize = MeasureTextEx(customFont, answerText, 30, 1);
-                            DrawTextEx(customFont, answerText, (Vector2){drones[i].position.x + 50 - textSize.x/2,
-                                   drones[i].position.y - 30}, 30, 1, RED);
+                            DrawTextEx(customFont, answerText, (Vector2){drones[i].position.x + 75 - textSize.x/2,
+                                   drones[i].position.y - 10}, 30, 1, RED);
                         }
                     }
                 }
@@ -341,12 +370,37 @@ int main(void)
                 }
             }
 
+        EndTextureMode();
+
+        // Now draw the scaled texture to the actual window
+        BeginDrawing();
+            ClearBackground(BLACK);
+
+            // Calculate scaling to fit window while maintaining aspect ratio
+            int windowWidth = GetScreenWidth();
+            int windowHeight = GetScreenHeight();
+            float scaleX = (float)windowWidth / (float)screenWidth;
+            float scaleY = (float)windowHeight / (float)screenHeight;
+            float scale = (scaleX < scaleY) ? scaleX : scaleY;
+
+            // Calculate position to center the game
+            float drawWidth = screenWidth * scale;
+            float drawHeight = screenHeight * scale;
+            float offsetX = (windowWidth - drawWidth) / 2.0f;
+            float offsetY = (windowHeight - drawHeight) / 2.0f;
+
+            // Draw the render texture scaled and centered
+            Rectangle sourceRec = { 0, 0, (float)target.texture.width, -(float)target.texture.height };
+            Rectangle destRec = { offsetX, offsetY, drawWidth, drawHeight };
+            DrawTexturePro(target.texture, sourceRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
+
         EndDrawing();
         //----------------------------------------------------------------------------------
     }
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
+    UnloadRenderTexture(target);
     UnloadFont(customFont);
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
@@ -415,21 +469,31 @@ void GenerateNewEquation(MathEquation *eq, int level) {
 }
 
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount) {
-    int numDrones = 3 + rand() % 3; // 3-5 drones
+    int numDrones = 2 + rand() % 2; // 2-3 drones (reduced from 3-5)
     if (numDrones > MAX_DRONES) numDrones = MAX_DRONES;
 
-    // Collect all existing answers on screen
+    // Check existing drones and mark any that match the new correct answer as Shahed
     int existingAnswers[MAX_DRONES];
     int existingCount = 0;
+    bool foundExistingShahed = false;
     for (int i = 0; i < MAX_DRONES; i++) {
         if (drones[i].active && drones[i].state == DRONE_FLYING) {
             existingAnswers[existingCount++] = drones[i].answer;
+            // If this drone has the correct answer for the new equation, mark it as Shahed
+            if (drones[i].answer == eq->correctAnswer) {
+                drones[i].isShahed = true;
+                foundExistingShahed = true;
+            } else {
+                // Make sure old drones aren't marked as Shahed anymore
+                drones[i].isShahed = false;
+            }
         }
     }
 
     // Generate answers, avoiding duplicates with existing drones
     int answers[MAX_DRONES];
-    int correctIndex = rand() % numDrones;
+    // If we found an existing drone with correct answer, don't spawn another one with same answer
+    int correctIndex = foundExistingShahed ? -1 : rand() % numDrones;
 
     for (int i = 0; i < numDrones; i++) {
         if (i == correctIndex) {
@@ -572,6 +636,13 @@ void DrawDrone(Texture2D texture, Drone drone) {
             sourceRec = (Rectangle){ 100, 0, 100, 100 };
             break;
         case DRONE_FALLING:
+            // Shahed uses attacking sprite (4th cell), others use damaged sprite (3rd cell)
+            if (drone.isShahed) {
+                sourceRec = (Rectangle){ 300, 0, 100, 100 };
+            } else {
+                sourceRec = (Rectangle){ 200, 0, 100, 100 };
+            }
+            break;
         case DRONE_DEAD:
             sourceRec = (Rectangle){ 200, 0, 100, 100 };
             break;
@@ -586,7 +657,9 @@ void DrawDrone(Texture2D texture, Drone drone) {
         }
     }
 
-    DrawTextureRec(texture, sourceRec, drone.position, WHITE);
+    // Scale drones to 150% (100x100 -> 150x150)
+    Rectangle destRec = (Rectangle){ drone.position.x, drone.position.y, 150, 150 };
+    DrawTexturePro(texture, sourceRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
 }
 
 void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position) {
@@ -601,7 +674,9 @@ void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position) {
     sourceRec.width = 150;
     sourceRec.height = 150;
 
-    DrawTextureRec(texture, sourceRec, position, WHITE);
+    // Scale tank to 150% (150x150 -> 225x225)
+    Rectangle destRec = (Rectangle){ position.x, position.y, 225, 225 };
+    DrawTexturePro(texture, sourceRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
 }
 
 void DrawAmmo(int ammo, int screenWidth, int screenHeight, Font font) {
@@ -653,33 +728,37 @@ void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int 
             // Check collision with target drone
             int targetIdx = projectiles[i].targetDroneIndex;
             if (targetIdx >= 0 && targetIdx < MAX_DRONES &&
-                drones[targetIdx].active && drones[targetIdx].state == DRONE_FLYING) {
+                drones[targetIdx].active &&
+                (drones[targetIdx].state == DRONE_FLYING || drones[targetIdx].state == DRONE_EXPLODING)) {
 
                 Vector2 droneCenter = {
-                    drones[targetIdx].position.x + 50,
-                    drones[targetIdx].position.y + 50
+                    drones[targetIdx].position.x + 75,
+                    drones[targetIdx].position.y + 75
                 };
 
                 float dx = projectiles[i].position.x - droneCenter.x;
                 float dy = projectiles[i].position.y - droneCenter.y;
                 float distance = sqrtf(dx * dx + dy * dy);
 
-                // Hit detection (within 30 pixels of drone center)
-                if (distance < 30.0f) {
+                // Hit detection (within 45 pixels of drone center - scaled for 150% size)
+                if (distance < 45.0f) {
                     projectiles[i].active = false;
 
-                    if (drones[targetIdx].isShahed) {
-                        // Correct hit!
-                        drones[targetIdx].state = DRONE_EXPLODING;
-                        drones[targetIdx].animTimer = 0.0f;
-                        *ammo += HIT_REWARD;
-                        *score += 10;
-                        *shahedActive = false; // Shahed destroyed, can generate new equation
-                    } else {
-                        // Wrong hit
-                        drones[targetIdx].state = DRONE_FALLING;
-                        drones[targetIdx].animTimer = 0.0f;
-                        *score -= 5;
+                    // Only apply damage effects if still flying (not already hit)
+                    if (drones[targetIdx].state == DRONE_FLYING) {
+                        if (drones[targetIdx].isShahed) {
+                            // Correct hit!
+                            drones[targetIdx].state = DRONE_EXPLODING;
+                            drones[targetIdx].animTimer = 0.0f;
+                            *ammo += HIT_REWARD;
+                            *score += 10;
+                            *shahedActive = false; // Shahed destroyed, can generate new equation
+                        } else {
+                            // Wrong hit
+                            drones[targetIdx].state = DRONE_FALLING;
+                            drones[targetIdx].animTimer = 0.0f;
+                            *score -= 5;
+                        }
                     }
                 }
             }
