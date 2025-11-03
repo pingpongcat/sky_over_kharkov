@@ -52,7 +52,7 @@
 #define DRONE_SPAWN_Y_MIN 80.0f
 #define DRONE_SPAWN_Y_RANGE 250.0f
 #define DRONE_MIN_COUNT 2
-#define DRONE_MAX_COUNT 3
+#define DRONE_MAX_COUNT 2
 
 // Drone target offsets for dual barrels
 #define DRONE_TARGET_OFFSET 10.0f
@@ -168,7 +168,7 @@ typedef struct {
 // Function Declarations
 //------------------------------------------------------------------------------------
 // Game logic functions
-void GenerateNewEquation(MathEquation *eq, int level);
+void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]);
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount);
 void UpdateDrones(Drone drones[], float deltaTime);
 void UpdateGepard(GepardTank *gepard, float deltaTime);
@@ -298,7 +298,7 @@ int main(void)
 
             if (levelSelected) {
                 gameStarted = true;
-                GenerateNewEquation(&currentEquation, level);
+                GenerateNewEquation(&currentEquation, level, drones);
                 SpawnDrones(drones, &currentEquation, &activeDroneCount);
                 shahedActive = true;
             }
@@ -336,7 +336,7 @@ int main(void)
 
                 // Spawn new wave only if Shahed has been dealt with (hit or missed)
                 if (!shahedActive && spawnTimer > RESPAWN_DELAY) {
-                    GenerateNewEquation(&currentEquation, level);
+                    GenerateNewEquation(&currentEquation, level, drones);
                     SpawnDrones(drones, &currentEquation, &activeDroneCount);
                     shahedActive = true;
                     spawnTimer = 0.0f;
@@ -529,58 +529,92 @@ int main(void)
 //------------------------------------------------------------------------------------
 // Function Definitions
 //------------------------------------------------------------------------------------
-void GenerateNewEquation(MathEquation *eq, int level) {
+void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]) {
     int opType;
+    int attempts = 0;
+    bool isTrivial;
+    bool duplicateAnswer;
 
-    // Determine available operations based on level
-    if (level == 1) {
-        opType = rand() % 2; // 0: add, 1: subtract
-    } else if (level == 2) {
-        opType = rand() % 3; // 0: add, 1: subtract, 2: multiply
-    } else {
-        opType = rand() % 4; // 0: add, 1: subtract, 2: multiply, 3: divide
-    }
+    do {
+        isTrivial = false;
+        duplicateAnswer = false;
 
-    switch(opType) {
-        case 0: // Addition
-            if (level == 1) {
-                eq->num1 = rand() % 21; // 0-20
-                eq->num2 = rand() % (21 - eq->num1); // Ensure sum <= 20
-            } else {
-                eq->num1 = 5 + rand() % 45;
-                eq->num2 = 5 + rand() % 45;
+        // Determine available operations based on level
+        if (level == 1) {
+            opType = rand() % 2; // 0: add, 1: subtract
+        } else if (level == 2) {
+            opType = rand() % 3; // 0: add, 1: subtract, 2: multiply
+        } else {
+            opType = rand() % 4; // 0: add, 1: subtract, 2: multiply, 3: divide
+        }
+
+        switch(opType) {
+            case 0: // Addition
+                if (level == 1) {
+                    eq->num1 = 1 + rand() % 20; // 1-20 (avoid 0)
+                    eq->num2 = 1 + rand() % 20; // 1-20 (avoid 0)
+                } else {
+                    eq->num1 = 5 + rand() % 45;
+                    eq->num2 = 5 + rand() % 45;
+                }
+                eq->operation = '+';
+                eq->correctAnswer = eq->num1 + eq->num2;
+
+                // Check for trivial cases: 0+X or X+0
+                if (eq->num1 == 0 || eq->num2 == 0) {
+                    isTrivial = true;
+                }
+                break;
+
+            case 1: // Subtraction
+                if (level == 1) {
+                    // Allow negative results
+                    eq->num1 = rand() % 21; // 0-20
+                    eq->num2 = rand() % 21; // 0-20
+                } else {
+                    eq->num1 = rand() % 80; // 0-79
+                    eq->num2 = rand() % 80; // 0-79
+                }
+                eq->operation = '-';
+                eq->correctAnswer = eq->num1 - eq->num2;
+
+                // Check for trivial case: X-0
+                if (eq->num2 == 0) {
+                    isTrivial = true;
+                }
+                break;
+
+            case 2: // Multiplication
+                eq->num1 = 2 + rand() % 12;
+                eq->num2 = 2 + rand() % 12;
+                eq->operation = '*';
+                eq->correctAnswer = eq->num1 * eq->num2;
+                break;
+
+            case 3: // Division
+                // Generate answer first, then calculate dividend to ensure whole number result
+                eq->correctAnswer = 2 + rand() % 10; // Answer: 2-11
+                eq->num2 = 2 + rand() % 9; // Divisor: 2-10
+                eq->num1 = eq->correctAnswer * eq->num2; // Dividend
+                eq->operation = '/';
+                break;
+        }
+
+        // Check if the correct answer already exists on any active drone
+        for (int i = 0; i < MAX_DRONES; i++) {
+            if (drones[i].active && drones[i].state == DRONE_FLYING) {
+                if (drones[i].answer == eq->correctAnswer) {
+                    duplicateAnswer = true;
+                    break;
+                }
             }
-            eq->operation = '+';
-            eq->correctAnswer = eq->num1 + eq->num2;
-            break;
+        }
 
-        case 1: // Subtraction
-            if (level == 1) {
-                eq->num1 = rand() % 21; // 0-20
-                eq->num2 = rand() % (eq->num1 + 1); // Ensure result >= 0
-            } else {
-                eq->num1 = 20 + rand() % 60;
-                eq->num2 = 5 + rand() % (eq->num1 - 5);
-            }
-            eq->operation = '-';
-            eq->correctAnswer = eq->num1 - eq->num2;
-            break;
+        attempts++;
+        // Prevent infinite loop, after 20 attempts just accept what we have
+        if (attempts > 20) break;
 
-        case 2: // Multiplication
-            eq->num1 = 2 + rand() % 12;
-            eq->num2 = 2 + rand() % 12;
-            eq->operation = '*';
-            eq->correctAnswer = eq->num1 * eq->num2;
-            break;
-
-        case 3: // Division
-            // Generate answer first, then calculate dividend to ensure whole number result
-            eq->correctAnswer = 2 + rand() % 10; // Answer: 2-11
-            eq->num2 = 2 + rand() % 9; // Divisor: 2-10
-            eq->num1 = eq->correctAnswer * eq->num2; // Dividend
-            eq->operation = '/';
-            break;
-    }
+    } while (isTrivial || duplicateAnswer);
 }
 
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount) {
