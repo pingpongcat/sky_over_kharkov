@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "localization.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -226,6 +227,9 @@ int main(void)
     // Seed random
     srand(time(NULL));
 
+    // Initialize localization system (Polish as default)
+    InitLocalization("translations.ini", LANG_POLISH);
+
     // Load Raylib's sprite fonts
     Font mechaFont = LoadFont("fonts/mecha.png");
     Font setbackFont = LoadFont("fonts/setback.png");
@@ -253,6 +257,11 @@ int main(void)
     Texture2D sahedTexture = LoadTexture("images/sahed.png");
     Texture2D gepardTexture = LoadTexture("images/gepard.png");
     Texture2D backgroundTexture = LoadTexture("images/background.png");
+
+    // Load flag textures for language selection
+    Texture2D flagGB = LoadTexture("images/gb.jpg");
+    Texture2D flagPL = LoadTexture("images/pl.jpg");
+    Texture2D flagUA = LoadTexture("images/ua.jpg");
 
     // Load sounds
     Sound shootSound = LoadSound("sounds/fire_burst.wav");
@@ -314,6 +323,30 @@ int main(void)
 
         if (!levelSelected) {
             // Level selection screen
+
+            // Handle flag clicks for language selection
+            if (!showOptionsMenu) {
+                RenderContext ctx = CalculateRenderContext(screenWidth, screenHeight);
+
+                // Define flag positions (must match drawing positions)
+                const float flagSize = 60.0f;
+                const float flagSpacing = 20.0f;
+                const float flagY = screenHeight - 100.0f;
+                Rectangle flagRectGB = {screenWidth/2 - flagSize - flagSpacing - flagSize/2, flagY, flagSize, flagSize * 0.6f};
+                Rectangle flagRectPL = {screenWidth/2 - flagSize/2, flagY, flagSize, flagSize * 0.6f};
+                Rectangle flagRectUA = {screenWidth/2 + flagSpacing + flagSize/2, flagY, flagSize, flagSize * 0.6f};
+
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    if (CheckCollisionPointRec(ctx.mousePos, flagRectGB)) {
+                        SetLanguage(LANG_ENGLISH);
+                    } else if (CheckCollisionPointRec(ctx.mousePos, flagRectPL)) {
+                        SetLanguage(LANG_POLISH);
+                    } else if (CheckCollisionPointRec(ctx.mousePos, flagRectUA)) {
+                        SetLanguage(LANG_UKRAINIAN);
+                    }
+                }
+            }
+
             if (IsKeyPressed(KEY_ONE)) {
                 level = 1;
                 levelSelected = true;
@@ -482,17 +515,74 @@ int main(void)
             if (!levelSelected && !showOptionsMenu) {
                 // Level selection screen - using Setback font
                 ClearBackground((Color){135, 206, 235, 255}); // Sky blue for menu
-                DrawTextEx(setbackFont, "SKY OVER KHARKIV", (Vector2){screenWidth/2 - 220, screenHeight/2 - 120}, setbackFont.baseSize * 3, SETBACK_SPACING, BLACK);
-                DrawTextEx(setbackFont, "Defend against Shahed drones!", (Vector2){screenWidth/2 - 200, screenHeight/2 - 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
-                DrawTextEx(setbackFont, "Solve the equation to identify the Shahed", (Vector2){screenWidth/2 - 250, screenHeight/2 - 30}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
 
-                DrawTextEx(setbackFont, "SELECT LEVEL:", (Vector2){screenWidth/2 - 110, screenHeight/2 + 20}, setbackFont.baseSize * 2, SETBACK_SPACING, BLACK);
-                DrawTextEx(setbackFont, "Press 1: Easy (Addition & Subtraction, 0-20)", (Vector2){screenWidth/2 - 270, screenHeight/2 + 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGREEN);
-                DrawTextEx(setbackFont, "Press 2: Medium (+ Multiplication)", (Vector2){screenWidth/2 - 210, screenHeight/2 + 90}, setbackFont.baseSize * 2, SETBACK_SPACING, ORANGE);
-                DrawTextEx(setbackFont, "Press 3: Hard (+ Division)", (Vector2){screenWidth/2 - 160, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, RED);
+                // Measure and center title
+                Vector2 titleSize = MeasureTextEx(setbackFont, GetText(STR_GAME_TITLE), setbackFont.baseSize * 3, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_GAME_TITLE), (Vector2){screenWidth/2 - titleSize.x/2, screenHeight/2 - 120}, setbackFont.baseSize * 3, SETBACK_SPACING, BLACK);
+
+                Vector2 subtitleSize = MeasureTextEx(setbackFont, GetText(STR_GAME_SUBTITLE), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_GAME_SUBTITLE), (Vector2){screenWidth/2 - subtitleSize.x/2, screenHeight/2 - 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
+
+                Vector2 instructionsSize = MeasureTextEx(setbackFont, GetText(STR_GAME_INSTRUCTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_GAME_INSTRUCTIONS), (Vector2){screenWidth/2 - instructionsSize.x/2, screenHeight/2 - 30}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
+
+                Vector2 selectLevelSize = MeasureTextEx(setbackFont, GetText(STR_SELECT_LEVEL), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_SELECT_LEVEL), (Vector2){screenWidth/2 - selectLevelSize.x/2, screenHeight/2 + 20}, setbackFont.baseSize * 2, SETBACK_SPACING, BLACK);
+
+                Vector2 level1Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_1_DESC), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_LEVEL_1_DESC), (Vector2){screenWidth/2 - level1Size.x/2, screenHeight/2 + 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGREEN);
+
+                Vector2 level2Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_2_DESC), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_LEVEL_2_DESC), (Vector2){screenWidth/2 - level2Size.x/2, screenHeight/2 + 90}, setbackFont.baseSize * 2, SETBACK_SPACING, ORANGE);
+
+                Vector2 level3Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_3_DESC), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_LEVEL_3_DESC), (Vector2){screenWidth/2 - level3Size.x/2, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, RED);
 
                 // Options hint
-                DrawTextEx(setbackFont, "Press O for Options", (Vector2){screenWidth/2 - 120, screenHeight/2 + 160}, setbackFont.baseSize * 2, SETBACK_SPACING, BLUE);
+                Vector2 optionsSize = MeasureTextEx(setbackFont, GetText(STR_PRESS_OPTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_PRESS_OPTIONS), (Vector2){screenWidth/2 - optionsSize.x/2, screenHeight/2 + 160}, setbackFont.baseSize * 2, SETBACK_SPACING, BLUE);
+
+                // Draw language selection flags at the bottom
+                const float flagSize = 60.0f;
+                const float flagSpacing = 20.0f;
+                const float flagY = screenHeight - 100.0f;
+                Language currentLang = GetCurrentLanguage();
+
+                // English flag (GB)
+                Rectangle flagDestGB = {screenWidth/2 - flagSize - flagSpacing - flagSize/2, flagY, flagSize, flagSize * 0.6f};
+                DrawTexturePro(flagGB,
+                              (Rectangle){0, 0, (float)flagGB.width, (float)flagGB.height},
+                              flagDestGB,
+                              (Vector2){0, 0}, 0.0f, WHITE);
+                if (currentLang == LANG_ENGLISH) {
+                    DrawRectangleLinesEx(flagDestGB, 3, GREEN);
+                } else {
+                    DrawRectangleLinesEx(flagDestGB, 2, BLACK);
+                }
+
+                // Polish flag (PL)
+                Rectangle flagDestPL = {screenWidth/2 - flagSize/2, flagY, flagSize, flagSize * 0.6f};
+                DrawTexturePro(flagPL,
+                              (Rectangle){0, 0, (float)flagPL.width, (float)flagPL.height},
+                              flagDestPL,
+                              (Vector2){0, 0}, 0.0f, WHITE);
+                if (currentLang == LANG_POLISH) {
+                    DrawRectangleLinesEx(flagDestPL, 3, GREEN);
+                } else {
+                    DrawRectangleLinesEx(flagDestPL, 2, BLACK);
+                }
+
+                // Ukrainian flag (UA)
+                Rectangle flagDestUA = {screenWidth/2 + flagSpacing + flagSize/2, flagY, flagSize, flagSize * 0.6f};
+                DrawTexturePro(flagUA,
+                              (Rectangle){0, 0, (float)flagUA.width, (float)flagUA.height},
+                              flagDestUA,
+                              (Vector2){0, 0}, 0.0f, WHITE);
+                if (currentLang == LANG_UKRAINIAN) {
+                    DrawRectangleLinesEx(flagDestUA, 3, GREEN);
+                } else {
+                    DrawRectangleLinesEx(flagDestUA, 2, BLACK);
+                }
             } else if (showOptionsMenu) {
                 // Draw options menu on top of level selection
                 ClearBackground((Color){135, 206, 235, 255}); // Sky blue background
@@ -501,10 +591,11 @@ int main(void)
                 DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 180});
 
                 // Menu title
-                DrawTextEx(mechaFont, "OPTIONS", (Vector2){screenWidth/2 - 100, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+                Vector2 optionsTitleSize = MeasureTextEx(mechaFont, GetText(STR_OPTIONS), mechaFont.baseSize * 4, MECHA_SPACING);
+                DrawTextEx(mechaFont, GetText(STR_OPTIONS), (Vector2){screenWidth/2 - optionsTitleSize.x/2, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
 
                 // Option 1: Show Equation Breakdown
-                DrawTextEx(setbackFont, "Show Equation Breakdown:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                DrawTextEx(setbackFont, GetText(STR_SHOW_BREAKDOWN), (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                 // Checkbox 1
                 Rectangle checkboxRect1 = {screenWidth/2 + 180, screenHeight/2 - 80, 30, 30};
@@ -516,7 +607,7 @@ int main(void)
                 }
 
                 // Option 2: Allow Negative Results
-                DrawTextEx(setbackFont, "Allow Negative Results:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                DrawTextEx(setbackFont, GetText(STR_ALLOW_NEGATIVE), (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                 // Checkbox 2
                 Rectangle checkboxRect2 = {screenWidth/2 + 180, screenHeight/2 - 30, 30, 30};
@@ -528,7 +619,7 @@ int main(void)
                 }
 
                 // Option 3: Music Volume
-                DrawTextEx(setbackFont, "Music Volume:", (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                DrawTextEx(setbackFont, GetText(STR_MUSIC_VOLUME), (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                 // Slider
                 Rectangle sliderBg = {screenWidth/2 - 100, screenHeight/2 + 50, 200, 20};
@@ -550,7 +641,8 @@ int main(void)
                 DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                 // Instructions
-                DrawTextEx(setbackFont, "Press O to close", (Vector2){screenWidth/2 - 100, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
+                Vector2 closeSize = MeasureTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), (Vector2){screenWidth/2 - closeSize.x/2, screenHeight/2 + 100}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
             } else if (gameStarted) {
                 // Draw background
                 DrawTexture(backgroundTexture, 0, 0, WHITE);
@@ -567,12 +659,12 @@ int main(void)
                 }
 
                 // Draw score and level - using Mecha font
-                char scoreText[32];
-                sprintf(scoreText, "Score: %d", score);
+                char scoreText[64];
+                sprintf(scoreText, GetText(STR_SCORE), score);
                 DrawTextEx(mechaFont, scoreText, (Vector2){screenWidth - 180, 20}, mechaFont.baseSize * 2, MECHA_SPACING, BLACK);
 
-                char levelText[32];
-                sprintf(levelText, "Level: %d", level);
+                char levelText[64];
+                sprintf(levelText, GetText(STR_LEVEL), level);
                 DrawTextEx(mechaFont, levelText, (Vector2){screenWidth - 180, 60}, mechaFont.baseSize * 2, MECHA_SPACING, DARKBLUE);
 
                 // Draw drone sprites
@@ -609,8 +701,10 @@ int main(void)
                 // Draw pause message - using Mecha font
                 if (paused && !showOptionsMenu) {
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 128});
-                    DrawTextEx(mechaFont, "PAUSED", (Vector2){screenWidth/2 - 100, screenHeight/2 - 40}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
-                    DrawTextEx(mechaFont, "Press SPACE to Resume", (Vector2){screenWidth/2 - 150, screenHeight/2 + 20}, mechaFont.baseSize * 2, MECHA_SPACING, WHITE);
+                    Vector2 pausedSize = MeasureTextEx(mechaFont, GetText(STR_PAUSED), mechaFont.baseSize * 4, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_PAUSED), (Vector2){screenWidth/2 - pausedSize.x/2, screenHeight/2 - 40}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+                    Vector2 resumeSize = MeasureTextEx(mechaFont, GetText(STR_PRESS_RESUME), mechaFont.baseSize * 2, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_PRESS_RESUME), (Vector2){screenWidth/2 - resumeSize.x/2, screenHeight/2 + 20}, mechaFont.baseSize * 2, MECHA_SPACING, WHITE);
                 }
 
                 // Draw options menu
@@ -619,10 +713,11 @@ int main(void)
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 180});
 
                     // Menu title
-                    DrawTextEx(mechaFont, "OPTIONS", (Vector2){screenWidth/2 - 100, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+                    Vector2 optionsTitleSize2 = MeasureTextEx(mechaFont, GetText(STR_OPTIONS), mechaFont.baseSize * 4, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_OPTIONS), (Vector2){screenWidth/2 - optionsTitleSize2.x/2, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
 
                     // Option 1: Show Equation Breakdown
-                    DrawTextEx(setbackFont, "Show Equation Breakdown:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                    DrawTextEx(setbackFont, GetText(STR_SHOW_BREAKDOWN), (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                     // Checkbox 1
                     Rectangle checkboxRect1 = {screenWidth/2 + 180, screenHeight/2 - 80, 30, 30};
@@ -634,7 +729,7 @@ int main(void)
                     }
 
                     // Option 2: Allow Negative Results
-                    DrawTextEx(setbackFont, "Allow Negative Results:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                    DrawTextEx(setbackFont, GetText(STR_ALLOW_NEGATIVE), (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                     // Checkbox 2
                     Rectangle checkboxRect2 = {screenWidth/2 + 180, screenHeight/2 - 30, 30, 30};
@@ -646,7 +741,7 @@ int main(void)
                     }
 
                     // Option 3: Music Volume
-                    DrawTextEx(setbackFont, "Music Volume:", (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                    DrawTextEx(setbackFont, GetText(STR_MUSIC_VOLUME), (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                     // Slider
                     Rectangle sliderBg = {screenWidth/2 - 100, screenHeight/2 + 50, 200, 20};
@@ -668,12 +763,14 @@ int main(void)
                     DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
 
                     // Instructions
-                    DrawTextEx(setbackFont, "Press O to close", (Vector2){screenWidth/2 - 100, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
+                    Vector2 closeSize2 = MeasureTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
+                    DrawTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), (Vector2){screenWidth/2 - closeSize2.x/2, screenHeight/2 + 100}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
                 }
 
                 // Draw game over message - using Mecha font
                 if (ammo < SHOT_COST) {
-                    DrawTextEx(mechaFont, "OUT OF AMMO! Press R to Restart", (Vector2){screenWidth/2 - 250, screenHeight/2}, mechaFont.baseSize * 2, MECHA_SPACING, RED);
+                    Vector2 gameOverSize = MeasureTextEx(mechaFont, GetText(STR_OUT_OF_AMMO), mechaFont.baseSize * 2, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_OUT_OF_AMMO), (Vector2){screenWidth/2 - gameOverSize.x/2, screenHeight/2}, mechaFont.baseSize * 2, MECHA_SPACING, RED);
                 }
             }
 
@@ -697,6 +794,7 @@ int main(void)
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
+    CleanupLocalization();
     UnloadRenderTexture(target);
     UnloadFont(mechaFont);
     UnloadFont(setbackFont);
@@ -706,6 +804,9 @@ int main(void)
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
     UnloadTexture(backgroundTexture);
+    UnloadTexture(flagGB);
+    UnloadTexture(flagPL);
+    UnloadTexture(flagUA);
     UnloadSound(shootSound);
     UnloadSound(explosionSound);
     CloseAudioDevice();

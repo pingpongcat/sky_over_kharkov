@@ -28,6 +28,8 @@ if (UNIX AND NOT APPLE)
     target_link_libraries(sky_over_kharkov m)
 endif()
 
-# Copy images and sounds folders to build directory
+# Copy images, sounds, fonts folders and translations.ini to build directory
 file(COPY ${CMAKE_SOURCE_DIR}/images DESTINATION ${CMAKE_BINARY_DIR})
 file(COPY ${CMAKE_SOURCE_DIR}/sounds DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY ${CMAKE_SOURCE_DIR}/fonts DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY ${CMAKE_SOURCE_DIR}/translations.ini DESTINATION ${CMAKE_BINARY_DIR})
