@@ -18,6 +18,7 @@
 #define HIT_REWARD 3
 #define SCORE_CORRECT_HIT 10
 #define SCORE_WRONG_HIT -5
+#define MAX_AMMO 20
 
 // Physics constants
 #define DRONE_SPEED 70.0f
@@ -126,12 +127,26 @@ typedef struct {
     int fireFrame;      // 0 = bottom, 1 = middle, 2 = top
 } GepardTank;
 
+typedef enum {
+    PART_NORMAL = 0,    // Normal display (blue)
+    PART_CANCELLED,     // Cancelled pairs (red)
+    PART_HIGHLIGHT      // Highlighted tens in addition (green)
+} PartVisualState;
+
+typedef struct {
+    int value;
+    char operatorBefore; // '+', '-', or '\0' for first element
+    PartVisualState visualState;
+} DecomposedPart;
+
 typedef struct {
     int num1;
     int num2;
     char operation;
     int correctAnswer;
     char decomposed[128]; // String representation of decomposed equation
+    DecomposedPart parts[20]; // Individual parts for visual rendering
+    int partCount;
 } MathEquation;
 
 typedef struct {
@@ -171,7 +186,7 @@ typedef struct {
 // Game logic functions
 void DecomposeNumber(int num, int *tens, int *ones);
 void CreateDecomposedEquation(MathEquation *eq);
-void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]);
+void GenerateNewEquation(MathEquation *eq, int level, Drone drones[], bool allowNegative);
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount);
 void UpdateDrones(Drone drones[], float deltaTime);
 void UpdateGepard(GepardTank *gepard, float deltaTime);
@@ -184,6 +199,7 @@ void DrawDrone(Texture2D texture, Drone drone);
 void DrawGepard(Texture2D texture, GepardTank gepard, Vector2 position);
 void DrawAmmo(int ammo, int screenWidth, int screenHeight);
 void DrawProjectiles(Projectile projectiles[]);
+void DrawDecomposedEquation(MathEquation *eq, Font font, Vector2 position, float fontSize, float spacing, float blinkTimer);
 
 // Helper functions to reduce redundant calculations
 RenderContext CalculateRenderContext(int screenWidth, int screenHeight);
@@ -205,6 +221,7 @@ int main(void)
     InitAudioDevice();
     SetTargetFPS(60);
     SetWindowState(FLAG_WINDOW_RESIZABLE);
+    SetMasterVolume(0.5f); // Initialize with default volume
 
     // Seed random
     srand(time(NULL));
@@ -265,6 +282,12 @@ int main(void)
     bool levelSelected = false;
     bool gameStarted = false;
     bool paused = false;
+    bool showOptionsMenu = false;
+
+    // Options/Settings
+    bool showEquationBreakdown = false; // Don't show decomposed equation by default
+    bool allowNegativeResults = false; // Don't allow negative results by default
+    float musicVolume = 0.5f; // 0.0 to 1.0
 
     //--------------------------------------------------------------------------------------
 
@@ -281,9 +304,12 @@ int main(void)
             ToggleBorderlessWindowed();
         }
 
-        // Exit fullscreen with Escape key
-        if (IsKeyPressed(KEY_ESCAPE) && IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE)) {
-            ToggleBorderlessWindowed();
+        // Options menu toggle with O key
+        if (IsKeyPressed(KEY_O)) {
+            showOptionsMenu = !showOptionsMenu;
+            if (showOptionsMenu && gameStarted) {
+                paused = true; // Auto-pause when opening options during game
+            }
         }
 
         if (!levelSelected) {
@@ -301,17 +327,53 @@ int main(void)
 
             if (levelSelected) {
                 gameStarted = true;
-                GenerateNewEquation(&currentEquation, level, drones);
+                GenerateNewEquation(&currentEquation, level, drones, allowNegativeResults);
                 SpawnDrones(drones, &currentEquation, &activeDroneCount);
                 shahedActive = true;
             }
-        } else if (gameStarted) {
-            // Toggle pause
-            if (IsKeyPressed(KEY_SPACE)) {
+        }
+
+        // Handle options menu interactions (works in both level select and game)
+        if (showOptionsMenu) {
+            // Calculate render context for mouse position
+            RenderContext ctx = CalculateRenderContext(screenWidth, screenHeight);
+
+            // Define UI element positions (must match drawing positions)
+            Rectangle breakdownCheckbox = {screenWidth/2 + 180, screenHeight/2 - 80, 30, 30};
+            Rectangle negativeCheckbox = {screenWidth/2 + 180, screenHeight/2 - 30, 30, 30};
+            Rectangle volumeSlider = {screenWidth/2 - 100, screenHeight/2 + 50, 200, 20};
+
+            // Handle checkbox clicks
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                // Equation breakdown toggle
+                if (CheckCollisionPointRec(ctx.mousePos, breakdownCheckbox)) {
+                    showEquationBreakdown = !showEquationBreakdown;
+                }
+                // Allow negative results toggle
+                if (CheckCollisionPointRec(ctx.mousePos, negativeCheckbox)) {
+                    allowNegativeResults = !allowNegativeResults;
+                }
+            }
+
+            // Handle volume slider drag
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                if (CheckCollisionPointRec(ctx.mousePos, volumeSlider)) {
+                    float sliderValue = (ctx.mousePos.x - volumeSlider.x) / volumeSlider.width;
+                    if (sliderValue < 0.0f) sliderValue = 0.0f;
+                    if (sliderValue > 1.0f) sliderValue = 1.0f;
+                    musicVolume = sliderValue;
+                    SetMasterVolume(musicVolume);
+                }
+            }
+        }
+
+        if (gameStarted) {
+            // Toggle pause (only when options menu is not shown and game is running)
+            if (!showOptionsMenu && IsKeyPressed(KEY_SPACE)) {
                 paused = !paused;
             }
 
-            if (!paused) {
+            if (!paused && !showOptionsMenu) {
                 // Calculate render context once per frame (eliminates duplicate calculations)
                 RenderContext ctx = CalculateRenderContext(screenWidth, screenHeight);
 
@@ -339,7 +401,7 @@ int main(void)
 
                 // Spawn new wave only if Shahed has been dealt with (hit or missed)
                 if (!shahedActive && spawnTimer > RESPAWN_DELAY) {
-                    GenerateNewEquation(&currentEquation, level, drones);
+                    GenerateNewEquation(&currentEquation, level, drones, allowNegativeResults);
                     SpawnDrones(drones, &currentEquation, &activeDroneCount);
                     shahedActive = true;
                     spawnTimer = 0.0f;
@@ -417,7 +479,7 @@ int main(void)
 
             ClearBackground(BLACK);
 
-            if (!levelSelected) {
+            if (!levelSelected && !showOptionsMenu) {
                 // Level selection screen - using Setback font
                 ClearBackground((Color){135, 206, 235, 255}); // Sky blue for menu
                 DrawTextEx(setbackFont, "SKY OVER KHARKIV", (Vector2){screenWidth/2 - 220, screenHeight/2 - 120}, setbackFont.baseSize * 3, SETBACK_SPACING, BLACK);
@@ -428,6 +490,67 @@ int main(void)
                 DrawTextEx(setbackFont, "Press 1: Easy (Addition & Subtraction, 0-20)", (Vector2){screenWidth/2 - 270, screenHeight/2 + 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGREEN);
                 DrawTextEx(setbackFont, "Press 2: Medium (+ Multiplication)", (Vector2){screenWidth/2 - 210, screenHeight/2 + 90}, setbackFont.baseSize * 2, SETBACK_SPACING, ORANGE);
                 DrawTextEx(setbackFont, "Press 3: Hard (+ Division)", (Vector2){screenWidth/2 - 160, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, RED);
+
+                // Options hint
+                DrawTextEx(setbackFont, "Press O for Options", (Vector2){screenWidth/2 - 120, screenHeight/2 + 160}, setbackFont.baseSize * 2, SETBACK_SPACING, BLUE);
+            } else if (showOptionsMenu) {
+                // Draw options menu on top of level selection
+                ClearBackground((Color){135, 206, 235, 255}); // Sky blue background
+
+                // Dark overlay
+                DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 180});
+
+                // Menu title
+                DrawTextEx(mechaFont, "OPTIONS", (Vector2){screenWidth/2 - 100, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+
+                // Option 1: Show Equation Breakdown
+                DrawTextEx(setbackFont, "Show Equation Breakdown:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                // Checkbox 1
+                Rectangle checkboxRect1 = {screenWidth/2 + 180, screenHeight/2 - 80, 30, 30};
+                DrawRectangleRec(checkboxRect1, WHITE);
+                DrawRectangleLinesEx(checkboxRect1, 2, BLACK);
+                if (showEquationBreakdown) {
+                    // Draw checkmark
+                    DrawRectangle(checkboxRect1.x + 5, checkboxRect1.y + 5, 20, 20, GREEN);
+                }
+
+                // Option 2: Allow Negative Results
+                DrawTextEx(setbackFont, "Allow Negative Results:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                // Checkbox 2
+                Rectangle checkboxRect2 = {screenWidth/2 + 180, screenHeight/2 - 30, 30, 30};
+                DrawRectangleRec(checkboxRect2, WHITE);
+                DrawRectangleLinesEx(checkboxRect2, 2, BLACK);
+                if (allowNegativeResults) {
+                    // Draw checkmark
+                    DrawRectangle(checkboxRect2.x + 5, checkboxRect2.y + 5, 20, 20, GREEN);
+                }
+
+                // Option 3: Music Volume
+                DrawTextEx(setbackFont, "Music Volume:", (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                // Slider
+                Rectangle sliderBg = {screenWidth/2 - 100, screenHeight/2 + 50, 200, 20};
+                DrawRectangleRec(sliderBg, DARKGRAY);
+                DrawRectangleLinesEx(sliderBg, 2, WHITE);
+
+                // Slider fill
+                Rectangle sliderFill = {sliderBg.x, sliderBg.y, sliderBg.width * musicVolume, sliderBg.height};
+                DrawRectangleRec(sliderFill, SKYBLUE);
+
+                // Slider handle
+                float handleX = sliderBg.x + (sliderBg.width * musicVolume);
+                DrawCircle(handleX, sliderBg.y + sliderBg.height/2, 12, WHITE);
+                DrawCircleLines(handleX, sliderBg.y + sliderBg.height/2, 12, BLACK);
+
+                // Volume percentage
+                char volumeText[16];
+                sprintf(volumeText, "%d%%", (int)(musicVolume * 100));
+                DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                // Instructions
+                DrawTextEx(setbackFont, "Press O to close", (Vector2){screenWidth/2 - 100, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
             } else if (gameStarted) {
                 // Draw background
                 DrawTexture(backgroundTexture, 0, 0, WHITE);
@@ -438,8 +561,10 @@ int main(void)
                         currentEquation.num1, currentEquation.operation, currentEquation.num2);
                 DrawTextEx(pixantiquaFont, equationText, (Vector2){20, 20}, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING, BLACK);
 
-                // Draw decomposed equation in blue below the main equation
-                DrawTextEx(pixantiquaFont, currentEquation.decomposed, (Vector2){20, 60}, pixantiquaFont.baseSize * 2, PIXANTIQUA_SPACING, BLUE);
+                // Draw decomposed equation with color coding (if enabled)
+                if (showEquationBreakdown) {
+                    DrawDecomposedEquation(&currentEquation, pixantiquaFont, (Vector2){20, 60}, pixantiquaFont.baseSize * 2, PIXANTIQUA_SPACING, 0.0f);
+                }
 
                 // Draw score and level - using Mecha font
                 char scoreText[32];
@@ -482,10 +607,68 @@ int main(void)
                 DrawAmmo(ammo, screenWidth, screenHeight);
 
                 // Draw pause message - using Mecha font
-                if (paused) {
+                if (paused && !showOptionsMenu) {
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 128});
                     DrawTextEx(mechaFont, "PAUSED", (Vector2){screenWidth/2 - 100, screenHeight/2 - 40}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
                     DrawTextEx(mechaFont, "Press SPACE to Resume", (Vector2){screenWidth/2 - 150, screenHeight/2 + 20}, mechaFont.baseSize * 2, MECHA_SPACING, WHITE);
+                }
+
+                // Draw options menu
+                if (showOptionsMenu) {
+                    // Dark overlay
+                    DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 180});
+
+                    // Menu title
+                    DrawTextEx(mechaFont, "OPTIONS", (Vector2){screenWidth/2 - 100, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+
+                    // Option 1: Show Equation Breakdown
+                    DrawTextEx(setbackFont, "Show Equation Breakdown:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                    // Checkbox 1
+                    Rectangle checkboxRect1 = {screenWidth/2 + 180, screenHeight/2 - 80, 30, 30};
+                    DrawRectangleRec(checkboxRect1, WHITE);
+                    DrawRectangleLinesEx(checkboxRect1, 2, BLACK);
+                    if (showEquationBreakdown) {
+                        // Draw checkmark
+                        DrawRectangle(checkboxRect1.x + 5, checkboxRect1.y + 5, 20, 20, GREEN);
+                    }
+
+                    // Option 2: Allow Negative Results
+                    DrawTextEx(setbackFont, "Allow Negative Results:", (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                    // Checkbox 2
+                    Rectangle checkboxRect2 = {screenWidth/2 + 180, screenHeight/2 - 30, 30, 30};
+                    DrawRectangleRec(checkboxRect2, WHITE);
+                    DrawRectangleLinesEx(checkboxRect2, 2, BLACK);
+                    if (allowNegativeResults) {
+                        // Draw checkmark
+                        DrawRectangle(checkboxRect2.x + 5, checkboxRect2.y + 5, 20, 20, GREEN);
+                    }
+
+                    // Option 3: Music Volume
+                    DrawTextEx(setbackFont, "Music Volume:", (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                    // Slider
+                    Rectangle sliderBg = {screenWidth/2 - 100, screenHeight/2 + 50, 200, 20};
+                    DrawRectangleRec(sliderBg, DARKGRAY);
+                    DrawRectangleLinesEx(sliderBg, 2, WHITE);
+
+                    // Slider fill
+                    Rectangle sliderFill = {sliderBg.x, sliderBg.y, sliderBg.width * musicVolume, sliderBg.height};
+                    DrawRectangleRec(sliderFill, SKYBLUE);
+
+                    // Slider handle
+                    float handleX = sliderBg.x + (sliderBg.width * musicVolume);
+                    DrawCircle(handleX, sliderBg.y + sliderBg.height/2, 12, WHITE);
+                    DrawCircleLines(handleX, sliderBg.y + sliderBg.height/2, 12, BLACK);
+
+                    // Volume percentage
+                    char volumeText[16];
+                    sprintf(volumeText, "%d%%", (int)(musicVolume * 100));
+                    DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+
+                    // Instructions
+                    DrawTextEx(setbackFont, "Press O to close", (Vector2){screenWidth/2 - 100, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
                 }
 
                 // Draw game over message - using Mecha font
@@ -548,67 +731,161 @@ void DecomposeNumber(int num, int *tens, int *ones) {
 }
 
 void CreateDecomposedEquation(MathEquation *eq) {
+    eq->partCount = 0;
+
     int num1_tens, num1_ones;
     int num2_tens, num2_ones;
 
     DecomposeNumber(eq->num1, &num1_tens, &num1_ones);
     DecomposeNumber(eq->num2, &num2_tens, &num2_ones);
 
-    // Build the decomposed equation string
-    char buffer[128] = "";
-
     switch(eq->operation) {
-        case '+':
-            // For addition: break each number into tens and ones
-            // Example: 14 + 12 = 10 + 4 + 10 + 2
-            if (num1_tens != 0 && num1_ones != 0) {
-                sprintf(buffer, "%d + %d", num1_tens, num1_ones);
-            } else if (num1_tens != 0) {
-                sprintf(buffer, "%d", num1_tens);
-            } else {
-                sprintf(buffer, "%d", num1_ones);
+        case '+': {
+            // For addition: highlight all tens in green
+            // Example: 18 + 23 = 10 + 8 + 10 + 10 + 3
+            int idx = 0;
+
+            // First number decomposition
+            if (num1_tens != 0) {
+                eq->parts[idx].value = num1_tens;
+                eq->parts[idx].operatorBefore = '\0';
+                eq->parts[idx].visualState = PART_HIGHLIGHT; // Green for tens
+                idx++;
+            }
+            if (num1_ones != 0) {
+                eq->parts[idx].value = num1_ones;
+                eq->parts[idx].operatorBefore = (num1_tens != 0) ? '+' : '\0';
+                eq->parts[idx].visualState = PART_NORMAL;
+                idx++;
             }
 
-            if (num2_tens != 0 && num2_ones != 0) {
-                sprintf(buffer + strlen(buffer), " + %d + %d = ?", num2_tens, num2_ones);
-            } else if (num2_tens != 0) {
-                sprintf(buffer + strlen(buffer), " + %d = ?", num2_tens);
-            } else {
-                sprintf(buffer + strlen(buffer), " + %d = ?", num2_ones);
+            // Second number decomposition
+            if (num2_tens != 0) {
+                eq->parts[idx].value = num2_tens;
+                eq->parts[idx].operatorBefore = '+';
+                eq->parts[idx].visualState = PART_HIGHLIGHT; // Green for tens
+                idx++;
             }
+            if (num2_ones != 0) {
+                eq->parts[idx].value = num2_ones;
+                eq->parts[idx].operatorBefore = '+';
+                eq->parts[idx].visualState = PART_NORMAL;
+                idx++;
+            }
+
+            eq->partCount = idx;
             break;
+        }
 
-        case '-':
-            // For subtraction: break first number, keep operations
-            // Example: 10 - 21 = 10 - 10 - 11
-            if (num1_tens != 0 && num1_ones != 0) {
-                sprintf(buffer, "%d + %d", num1_tens, num1_ones);
-            } else if (num1_tens != 0) {
-                sprintf(buffer, "%d", num1_tens);
-            } else {
-                sprintf(buffer, "%d", num1_ones);
+        case '-': {
+            // For subtraction: implement pairing logic
+            // Example: 11 - 20 = 10 + 1 - 10 - 10
+            //                    (red)    (red)
+            int idx = 0;
+
+            // Build lists of positive and negative tens
+            int positiveTens[10] = {0};
+            int negativeTens[10] = {0};
+            int posTensCount = 0;
+            int negTensCount = 0;
+
+            // Add parts from num1 (all positive)
+            if (num1_tens != 0) {
+                int count = abs(num1_tens) / 10;
+                for (int i = 0; i < count; i++) {
+                    positiveTens[posTensCount++] = 10;
+                }
             }
 
-            if (num2_tens != 0 && num2_ones != 0) {
-                sprintf(buffer + strlen(buffer), " - %d - %d = ?", abs(num2_tens), abs(num2_ones));
-            } else if (num2_tens != 0) {
-                sprintf(buffer + strlen(buffer), " - %d = ?", abs(num2_tens));
-            } else {
-                sprintf(buffer + strlen(buffer), " - %d = ?", abs(num2_ones));
+            // Add parts from num2 (all negative in subtraction)
+            if (num2_tens != 0) {
+                int count = abs(num2_tens) / 10;
+                for (int i = 0; i < count; i++) {
+                    negativeTens[negTensCount++] = 10;
+                }
             }
+
+            // Mark pairs for red highlighting (cancellation)
+            bool positiveCancelled[10] = {false};
+            bool negativeCancelled[10] = {false};
+
+            int pairsToMake = (posTensCount < negTensCount) ? posTensCount : negTensCount;
+            for (int i = 0; i < pairsToMake; i++) {
+                positiveCancelled[i] = true;
+                negativeCancelled[i] = true;
+            }
+
+            // Now build the parts array
+            // First number parts
+            if (num1_tens != 0) {
+                int count = abs(num1_tens) / 10;
+                for (int i = 0; i < count; i++) {
+                    eq->parts[idx].value = 10;
+                    eq->parts[idx].operatorBefore = (idx == 0) ? '\0' : '+';
+                    eq->parts[idx].visualState = positiveCancelled[i] ? PART_CANCELLED : PART_NORMAL;
+                    idx++;
+                }
+            }
+
+            if (num1_ones != 0) {
+                eq->parts[idx].value = num1_ones;
+                eq->parts[idx].operatorBefore = (idx == 0) ? '\0' : '+';
+                eq->parts[idx].visualState = PART_NORMAL;
+                idx++;
+            }
+
+            // Second number parts (subtracted)
+            if (num2_tens != 0) {
+                int count = abs(num2_tens) / 10;
+                for (int i = 0; i < count; i++) {
+                    eq->parts[idx].value = 10;
+                    eq->parts[idx].operatorBefore = '-';
+                    eq->parts[idx].visualState = negativeCancelled[i] ? PART_CANCELLED : PART_NORMAL;
+                    idx++;
+                }
+            }
+
+            if (num2_ones != 0) {
+                eq->parts[idx].value = abs(num2_ones);
+                eq->parts[idx].operatorBefore = '-';
+                eq->parts[idx].visualState = PART_NORMAL;
+                idx++;
+            }
+
+            eq->partCount = idx;
             break;
+        }
 
         case '*':
         case '/':
-            // For multiplication and division, don't decompose (too complex for children)
-            sprintf(buffer, "%d %c %d = ?", eq->num1, eq->operation, eq->num2);
+            // For multiplication and division, create a single "part" with the full equation
+            eq->parts[0].value = eq->num1;
+            eq->parts[0].operatorBefore = '\0';
+            eq->parts[0].visualState = PART_NORMAL;
+            eq->partCount = 1;
             break;
     }
 
+    // Also build the old string version for compatibility
+    char buffer[128] = "";
+    for (int i = 0; i < eq->partCount; i++) {
+        if (eq->parts[i].operatorBefore != '\0') {
+            sprintf(buffer + strlen(buffer), " %c ", eq->parts[i].operatorBefore);
+        }
+        sprintf(buffer + strlen(buffer), "%d", eq->parts[i].value);
+    }
+
+    if (eq->operation == '*') {
+        sprintf(buffer, "%d * %d", eq->num1, eq->num2);
+    } else if (eq->operation == '/') {
+        sprintf(buffer, "%d / %d", eq->num1, eq->num2);
+    }
+
+    sprintf(buffer + strlen(buffer), " = ?");
     strcpy(eq->decomposed, buffer);
 }
 
-void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]) {
+void GenerateNewEquation(MathEquation *eq, int level, Drone drones[], bool allowNegative) {
     int opType;
     int attempts = 0;
     bool isTrivial;
@@ -646,13 +923,24 @@ void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]) {
                 break;
 
             case 1: // Subtraction
-                if (level == 1) {
+                if (allowNegative) {
                     // Allow negative results
-                    eq->num1 = rand() % 21; // 0-20
-                    eq->num2 = rand() % 21; // 0-20
+                    if (level == 1) {
+                        eq->num1 = rand() % 21; // 0-20
+                        eq->num2 = rand() % 21; // 0-20
+                    } else {
+                        eq->num1 = rand() % 80; // 0-79
+                        eq->num2 = rand() % 80; // 0-79
+                    }
                 } else {
-                    eq->num1 = rand() % 80; // 0-79
-                    eq->num2 = rand() % 80; // 0-79
+                    // Only positive results
+                    if (level == 1) {
+                        eq->num1 = rand() % 21; // 0-20
+                        eq->num2 = rand() % (eq->num1 + 1); // Ensure result >= 0
+                    } else {
+                        eq->num1 = 20 + rand() % 60;
+                        eq->num2 = 5 + rand() % (eq->num1 - 4);
+                    }
                 }
                 eq->operation = '-';
                 eq->correctAnswer = eq->num1 - eq->num2;
@@ -992,6 +1280,10 @@ void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int 
                             drones[targetIdx].state = DRONE_EXPLODING;
                             drones[targetIdx].animTimer = 0.0f;
                             *ammo += HIT_REWARD;
+                            // Cap ammo at maximum
+                            if (*ammo > MAX_AMMO) {
+                                *ammo = MAX_AMMO;
+                            }
                             *score += SCORE_CORRECT_HIT;
                             *shahedActive = false; // Shahed destroyed, can generate new equation
                         } else {
@@ -1026,6 +1318,53 @@ void DrawProjectiles(Projectile projectiles[]) {
             DrawCircleV(projectiles[i].position, PROJECTILE_DOT_RADIUS, ORANGE);
         }
     }
+}
+
+void DrawDecomposedEquation(MathEquation *eq, Font font, Vector2 position, float fontSize, float spacing, float blinkTimer) {
+    Vector2 currentPos = position;
+
+    for (int i = 0; i < eq->partCount; i++) {
+        DecomposedPart *part = &eq->parts[i];
+        char partText[32];
+
+        // Draw operator if not the first element
+        if (part->operatorBefore != '\0') {
+            char opText[4];
+            sprintf(opText, " %c ", part->operatorBefore);
+            DrawTextEx(font, opText, currentPos, fontSize, spacing, BLUE);
+            Vector2 opSize = MeasureTextEx(font, opText, fontSize, spacing);
+            currentPos.x += opSize.x;
+        }
+
+        // Draw the number with appropriate color
+        sprintf(partText, "%d", part->value);
+
+        Color textColor = BLUE; // Default color
+
+        switch (part->visualState) {
+            case PART_NORMAL:
+                textColor = BLUE;
+                break;
+
+            case PART_HIGHLIGHT:
+                // Green for tens in addition
+                textColor = (Color){0, 150, 0, 255}; // Dark green
+                break;
+
+            case PART_CANCELLED:
+                // Red for cancelled pairs in subtraction
+                textColor = RED;
+                break;
+        }
+
+        DrawTextEx(font, partText, currentPos, fontSize, spacing, textColor);
+        Vector2 partSize = MeasureTextEx(font, partText, fontSize, spacing);
+        currentPos.x += partSize.x;
+    }
+
+    // Draw " = ?" at the end
+    char endText[] = " = ?";
+    DrawTextEx(font, endText, currentPos, fontSize, spacing, BLUE);
 }
 
 //------------------------------------------------------------------------------------
