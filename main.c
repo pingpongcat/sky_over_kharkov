@@ -131,6 +131,7 @@ typedef struct {
     int num2;
     char operation;
     int correctAnswer;
+    char decomposed[128]; // String representation of decomposed equation
 } MathEquation;
 
 typedef struct {
@@ -168,6 +169,8 @@ typedef struct {
 // Function Declarations
 //------------------------------------------------------------------------------------
 // Game logic functions
+void DecomposeNumber(int num, int *tens, int *ones);
+void CreateDecomposedEquation(MathEquation *eq);
 void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]);
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount);
 void UpdateDrones(Drone drones[], float deltaTime);
@@ -435,6 +438,9 @@ int main(void)
                         currentEquation.num1, currentEquation.operation, currentEquation.num2);
                 DrawTextEx(pixantiquaFont, equationText, (Vector2){20, 20}, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING, BLACK);
 
+                // Draw decomposed equation in blue below the main equation
+                DrawTextEx(pixantiquaFont, currentEquation.decomposed, (Vector2){20, 60}, pixantiquaFont.baseSize * 2, PIXANTIQUA_SPACING, BLUE);
+
                 // Draw score and level - using Mecha font
                 char scoreText[32];
                 sprintf(scoreText, "Score: %d", score);
@@ -529,6 +535,79 @@ int main(void)
 //------------------------------------------------------------------------------------
 // Function Definitions
 //------------------------------------------------------------------------------------
+void DecomposeNumber(int num, int *tens, int *ones) {
+    if (num >= 0) {
+        *tens = (num / 10) * 10;
+        *ones = num % 10;
+    } else {
+        // For negative numbers, decompose the absolute value
+        int absNum = -num;
+        *tens = -((absNum / 10) * 10);
+        *ones = -(absNum % 10);
+    }
+}
+
+void CreateDecomposedEquation(MathEquation *eq) {
+    int num1_tens, num1_ones;
+    int num2_tens, num2_ones;
+
+    DecomposeNumber(eq->num1, &num1_tens, &num1_ones);
+    DecomposeNumber(eq->num2, &num2_tens, &num2_ones);
+
+    // Build the decomposed equation string
+    char buffer[128] = "";
+
+    switch(eq->operation) {
+        case '+':
+            // For addition: break each number into tens and ones
+            // Example: 14 + 12 = 10 + 4 + 10 + 2
+            if (num1_tens != 0 && num1_ones != 0) {
+                sprintf(buffer, "%d + %d", num1_tens, num1_ones);
+            } else if (num1_tens != 0) {
+                sprintf(buffer, "%d", num1_tens);
+            } else {
+                sprintf(buffer, "%d", num1_ones);
+            }
+
+            if (num2_tens != 0 && num2_ones != 0) {
+                sprintf(buffer + strlen(buffer), " + %d + %d = ?", num2_tens, num2_ones);
+            } else if (num2_tens != 0) {
+                sprintf(buffer + strlen(buffer), " + %d = ?", num2_tens);
+            } else {
+                sprintf(buffer + strlen(buffer), " + %d = ?", num2_ones);
+            }
+            break;
+
+        case '-':
+            // For subtraction: break first number, keep operations
+            // Example: 10 - 21 = 10 - 10 - 11
+            if (num1_tens != 0 && num1_ones != 0) {
+                sprintf(buffer, "%d + %d", num1_tens, num1_ones);
+            } else if (num1_tens != 0) {
+                sprintf(buffer, "%d", num1_tens);
+            } else {
+                sprintf(buffer, "%d", num1_ones);
+            }
+
+            if (num2_tens != 0 && num2_ones != 0) {
+                sprintf(buffer + strlen(buffer), " - %d - %d = ?", abs(num2_tens), abs(num2_ones));
+            } else if (num2_tens != 0) {
+                sprintf(buffer + strlen(buffer), " - %d = ?", abs(num2_tens));
+            } else {
+                sprintf(buffer + strlen(buffer), " - %d = ?", abs(num2_ones));
+            }
+            break;
+
+        case '*':
+        case '/':
+            // For multiplication and division, don't decompose (too complex for children)
+            sprintf(buffer, "%d %c %d = ?", eq->num1, eq->operation, eq->num2);
+            break;
+    }
+
+    strcpy(eq->decomposed, buffer);
+}
+
 void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]) {
     int opType;
     int attempts = 0;
@@ -615,6 +694,9 @@ void GenerateNewEquation(MathEquation *eq, int level, Drone drones[]) {
         if (attempts > 20) break;
 
     } while (isTrivial || duplicateAnswer);
+
+    // Create decomposed version of the equation for children
+    CreateDecomposedEquation(eq);
 }
 
 void SpawnDrones(Drone drones[], MathEquation *eq, int *activeDroneCount) {
