@@ -73,12 +73,22 @@
 #define AMMO_WARNING_THRESHOLD 10
 #define AMMO_CRITICAL_THRESHOLD 5
 
-// Font constants for pixel-perfect rendering
-#define MECHA_SPACING 8
-#define SETBACK_SPACING 4
-#define ROMULUS_SPACING 3
-#define ALPHA_BETA_SPACING 4
-#define PIXANTIQUA_SPACING 4
+// Font spacing constants for TTF rendering (character spacing in pixels)
+#define MECHA_SPACING 2
+#define SETBACK_SPACING 1
+#define ROMULUS_SPACING 1
+#define ALPHA_BETA_SPACING 1
+#define PIXANTIQUA_SPACING 1
+
+// Font size constants for TTF fonts (actual point sizes to render)
+#define TITLE_SIZE_LARGE 64.0f     // Large titles
+#define TITLE_SIZE_MEDIUM 42.0f    // Medium titles
+#define TEXT_SIZE_LARGE 32.0f      // Large text
+#define TEXT_SIZE_MEDIUM 22.0f     // Medium text
+#define TEXT_SIZE_SMALL 18.0f      // Small text
+#define EQUATION_SIZE 48.0f        // Equation display (reduced from 72)
+#define EQUATION_BREAKDOWN_SIZE 28.0f // Breakdown display (reduced from 36)
+#define SCORE_SIZE 28.0f           // Score/level display (reduced from 32)
 
 // Spawn timing
 #define SPAWN_INTERVAL 3.0f
@@ -235,27 +245,62 @@ int main(void)
     // Initialize localization system (Polish as default)
     InitLocalization("translations.ini", LANG_POLISH);
 
-    // Load Raylib's sprite fonts
-    Font mechaFont = LoadFont("fonts/mecha.png");
-    Font setbackFont = LoadFont("fonts/setback.png");
-    Font romulusFont = LoadFont("fonts/romulus.png");
-    Font alphaBetaFont = LoadFont("fonts/alpha_beta.png");
-    Font pixantiquaFont = LoadFont("fonts/pixantiqua.png");
+    // Generate codepoint ranges for Latin + Cyrillic (for Ukrainian support)
+    // Latin Basic: 0x0020-0x007F (95 chars)
+    // Latin Extended: 0x0080-0x00FF (128 chars)
+    // Cyrillic: 0x0400-0x04FF (256 chars)
+    int codepointCount = 95 + 128 + 256;
+    int *codepoints = (int*)malloc(codepointCount * sizeof(int));
+    int idx = 0;
 
-    if (mechaFont.texture.id == 0 || setbackFont.texture.id == 0 || romulusFont.texture.id == 0 || alphaBetaFont.texture.id == 0 || pixantiquaFont.texture.id == 0) {
-        printf("ERROR: Failed to load sprite fonts! Using default.\n");
-        if (mechaFont.texture.id == 0) mechaFont = GetFontDefault();
-        if (setbackFont.texture.id == 0) setbackFont = GetFontDefault();
-        if (romulusFont.texture.id == 0) romulusFont = GetFontDefault();
-        if (alphaBetaFont.texture.id == 0) alphaBetaFont = GetFontDefault();
-        if (pixantiquaFont.texture.id == 0) pixantiquaFont = GetFontDefault();
+    // Latin Basic (0x0020-0x007F)
+    for (int i = 0x0020; i <= 0x007F; i++) codepoints[idx++] = i;
+
+    // Latin Extended (0x0080-0x00FF)
+    for (int i = 0x0080; i <= 0x00FF; i++) codepoints[idx++] = i;
+
+    // Cyrillic (0x0400-0x04FF) - includes Ukrainian characters
+    for (int i = 0x0400; i <= 0x04FF; i++) codepoints[idx++] = i;
+
+    // Load TTF fonts from ari-w9500 family with Unicode support for Ukrainian
+    // Loading multiple sizes for different uses to minimize scaling and maximize sharpness
+    Font titleFont = LoadFontEx("fonts/ari-w9500-display.ttf", 72, codepoints, codepointCount);  // Large display titles
+    Font menuFont = LoadFontEx("fonts/ari-w9500.ttf", 64, codepoints, codepointCount);           // Menu text (large)
+    Font boldFont = LoadFontEx("fonts/ari-w9500-bold.ttf", 48, codepoints, codepointCount);      // Bold emphasis
+    Font regularFont = LoadFontEx("fonts/ari-w9500.ttf", 32, codepoints, codepointCount);        // Regular text
+    Font equationFont = LoadFontEx("fonts/ari-w9500-condensed.ttf", 48, codepoints, codepointCount); // Equations/numbers
+
+    // Free codepoint array after loading fonts
+    free(codepoints);
+
+    // Map to existing font variables for compatibility
+    Font mechaFont = titleFont;       // Used for titles and UI elements
+    Font setbackFont = menuFont;      // Used for menu text (now uses larger base)
+    Font pixantiquaFont = equationFont; // Used for equations and numbers
+
+    // Unused old fonts (kept for compatibility but mapped to regular)
+    Font romulusFont = regularFont;
+    Font alphaBetaFont = regularFont;
+
+    if (titleFont.texture.id == 0 || menuFont.texture.id == 0 || boldFont.texture.id == 0 || regularFont.texture.id == 0 || equationFont.texture.id == 0) {
+        printf("ERROR: Failed to load TTF fonts! Using default.\n");
+        if (titleFont.texture.id == 0) titleFont = GetFontDefault();
+        if (menuFont.texture.id == 0) menuFont = GetFontDefault();
+        if (boldFont.texture.id == 0) boldFont = GetFontDefault();
+        if (regularFont.texture.id == 0) regularFont = GetFontDefault();
+        if (equationFont.texture.id == 0) equationFont = GetFontDefault();
+        mechaFont = titleFont;
+        setbackFont = menuFont;
+        pixantiquaFont = equationFont;
+        romulusFont = regularFont;
+        alphaBetaFont = regularFont;
     } else {
-        printf("Sprite fonts loaded successfully!\n");
-        SetTextureFilter(mechaFont.texture, TEXTURE_FILTER_POINT);
-        SetTextureFilter(setbackFont.texture, TEXTURE_FILTER_POINT);
-        SetTextureFilter(romulusFont.texture, TEXTURE_FILTER_POINT);
-        SetTextureFilter(alphaBetaFont.texture, TEXTURE_FILTER_POINT);
-        SetTextureFilter(pixantiquaFont.texture, TEXTURE_FILTER_POINT);
+        printf("TTF fonts loaded successfully with Ukrainian support!\n");
+        SetTextureFilter(titleFont.texture, TEXTURE_FILTER_BILINEAR);
+        SetTextureFilter(menuFont.texture, TEXTURE_FILTER_BILINEAR);
+        SetTextureFilter(boldFont.texture, TEXTURE_FILTER_BILINEAR);
+        SetTextureFilter(regularFont.texture, TEXTURE_FILTER_BILINEAR);
+        SetTextureFilter(equationFont.texture, TEXTURE_FILTER_BILINEAR);
     }
 
     // Load textures
@@ -522,30 +567,30 @@ int main(void)
                 ClearBackground((Color){135, 206, 235, 255}); // Sky blue for menu
 
                 // Measure and center title
-                Vector2 titleSize = MeasureTextEx(setbackFont, GetText(STR_GAME_TITLE), setbackFont.baseSize * 3, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_GAME_TITLE), (Vector2){screenWidth/2 - titleSize.x/2, screenHeight/2 - 120}, setbackFont.baseSize * 3, SETBACK_SPACING, BLACK);
+                Vector2 titleSize = MeasureTextEx(setbackFont, GetText(STR_GAME_TITLE), TITLE_SIZE_LARGE, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_GAME_TITLE), (Vector2){screenWidth/2 - titleSize.x/2, screenHeight/2 - 120}, TITLE_SIZE_LARGE, SETBACK_SPACING, BLACK);
 
-                Vector2 subtitleSize = MeasureTextEx(setbackFont, GetText(STR_GAME_SUBTITLE), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_GAME_SUBTITLE), (Vector2){screenWidth/2 - subtitleSize.x/2, screenHeight/2 - 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
+                Vector2 subtitleSize = MeasureTextEx(setbackFont, GetText(STR_GAME_SUBTITLE), TITLE_SIZE_MEDIUM, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_GAME_SUBTITLE), (Vector2){screenWidth/2 - subtitleSize.x/2, screenHeight/2 - 60}, TITLE_SIZE_MEDIUM, SETBACK_SPACING, DARKGRAY);
 
-                Vector2 instructionsSize = MeasureTextEx(setbackFont, GetText(STR_GAME_INSTRUCTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_GAME_INSTRUCTIONS), (Vector2){screenWidth/2 - instructionsSize.x/2, screenHeight/2 - 30}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGRAY);
+                Vector2 instructionsSize = MeasureTextEx(setbackFont, GetText(STR_GAME_INSTRUCTIONS), TEXT_SIZE_LARGE, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_GAME_INSTRUCTIONS), (Vector2){screenWidth/2 - instructionsSize.x/2, screenHeight/2 - 30}, TEXT_SIZE_LARGE, SETBACK_SPACING, DARKGRAY);
 
-                Vector2 selectLevelSize = MeasureTextEx(setbackFont, GetText(STR_SELECT_LEVEL), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_SELECT_LEVEL), (Vector2){screenWidth/2 - selectLevelSize.x/2, screenHeight/2 + 20}, setbackFont.baseSize * 2, SETBACK_SPACING, BLACK);
+                Vector2 selectLevelSize = MeasureTextEx(setbackFont, GetText(STR_SELECT_LEVEL), TEXT_SIZE_LARGE, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_SELECT_LEVEL), (Vector2){screenWidth/2 - selectLevelSize.x/2, screenHeight/2 + 20}, TEXT_SIZE_LARGE, SETBACK_SPACING, BLACK);
 
-                Vector2 level1Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_1_DESC), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_LEVEL_1_DESC), (Vector2){screenWidth/2 - level1Size.x/2, screenHeight/2 + 60}, setbackFont.baseSize * 2, SETBACK_SPACING, DARKGREEN);
+                Vector2 level1Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_1_DESC), TEXT_SIZE_LARGE, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_LEVEL_1_DESC), (Vector2){screenWidth/2 - level1Size.x/2, screenHeight/2 + 60}, TEXT_SIZE_LARGE, SETBACK_SPACING, DARKGREEN);
 
-                Vector2 level2Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_2_DESC), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_LEVEL_2_DESC), (Vector2){screenWidth/2 - level2Size.x/2, screenHeight/2 + 90}, setbackFont.baseSize * 2, SETBACK_SPACING, ORANGE);
+                Vector2 level2Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_2_DESC), TEXT_SIZE_LARGE, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_LEVEL_2_DESC), (Vector2){screenWidth/2 - level2Size.x/2, screenHeight/2 + 90}, TEXT_SIZE_LARGE, SETBACK_SPACING, ORANGE);
 
-                Vector2 level3Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_3_DESC), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_LEVEL_3_DESC), (Vector2){screenWidth/2 - level3Size.x/2, screenHeight/2 + 120}, setbackFont.baseSize * 2, SETBACK_SPACING, RED);
+                Vector2 level3Size = MeasureTextEx(setbackFont, GetText(STR_LEVEL_3_DESC), TEXT_SIZE_LARGE, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_LEVEL_3_DESC), (Vector2){screenWidth/2 - level3Size.x/2, screenHeight/2 + 120}, TEXT_SIZE_LARGE, SETBACK_SPACING, RED);
 
                 // Options hint
-                Vector2 optionsSize = MeasureTextEx(setbackFont, GetText(STR_PRESS_OPTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_PRESS_OPTIONS), (Vector2){screenWidth/2 - optionsSize.x/2, screenHeight/2 + 160}, setbackFont.baseSize * 2, SETBACK_SPACING, BLUE);
+                Vector2 optionsSize = MeasureTextEx(setbackFont, GetText(STR_PRESS_OPTIONS), TEXT_SIZE_MEDIUM, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_PRESS_OPTIONS), (Vector2){screenWidth/2 - optionsSize.x/2, screenHeight/2 + 160}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, BLUE);
 
                 // Draw language selection flags at the bottom
                 const float flagSize = 60.0f;
@@ -596,11 +641,11 @@ int main(void)
                 DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 180});
 
                 // Menu title
-                Vector2 optionsTitleSize = MeasureTextEx(mechaFont, GetText(STR_OPTIONS), mechaFont.baseSize * 4, MECHA_SPACING);
-                DrawTextEx(mechaFont, GetText(STR_OPTIONS), (Vector2){screenWidth/2 - optionsTitleSize.x/2, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+                Vector2 optionsTitleSize = MeasureTextEx(mechaFont, GetText(STR_OPTIONS), TITLE_SIZE_LARGE, MECHA_SPACING);
+                DrawTextEx(mechaFont, GetText(STR_OPTIONS), (Vector2){screenWidth/2 - optionsTitleSize.x/2, screenHeight/2 - 150}, TITLE_SIZE_LARGE, MECHA_SPACING, WHITE);
 
                 // Option 1: Show Equation Breakdown
-                DrawTextEx(setbackFont, GetText(STR_SHOW_BREAKDOWN), (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                DrawTextEx(setbackFont, GetText(STR_SHOW_BREAKDOWN), (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                 // Checkbox 1
                 Rectangle checkboxRect1 = {screenWidth/2 + 180, screenHeight/2 - 80, 30, 30};
@@ -612,7 +657,7 @@ int main(void)
                 }
 
                 // Option 2: Allow Negative Results
-                DrawTextEx(setbackFont, GetText(STR_ALLOW_NEGATIVE), (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                DrawTextEx(setbackFont, GetText(STR_ALLOW_NEGATIVE), (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                 // Checkbox 2
                 Rectangle checkboxRect2 = {screenWidth/2 + 180, screenHeight/2 - 30, 30, 30};
@@ -624,7 +669,7 @@ int main(void)
                 }
 
                 // Option 3: Music Volume
-                DrawTextEx(setbackFont, GetText(STR_MUSIC_VOLUME), (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                DrawTextEx(setbackFont, GetText(STR_MUSIC_VOLUME), (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                 // Slider
                 Rectangle sliderBg = {screenWidth/2 - 100, screenHeight/2 + 50, 200, 20};
@@ -643,11 +688,11 @@ int main(void)
                 // Volume percentage
                 char volumeText[16];
                 sprintf(volumeText, "%d%%", (int)(musicVolume * 100));
-                DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                 // Instructions
-                Vector2 closeSize = MeasureTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
-                DrawTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), (Vector2){screenWidth/2 - closeSize.x/2, screenHeight/2 + 100}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
+                Vector2 closeSize = MeasureTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), TEXT_SIZE_MEDIUM, SETBACK_SPACING);
+                DrawTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), (Vector2){screenWidth/2 - closeSize.x/2, screenHeight/2 + 100}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, LIGHTGRAY);
             } else if (gameStarted) {
                 // Draw background
                 DrawTexture(backgroundTexture, 0, 0, WHITE);
@@ -656,21 +701,21 @@ int main(void)
                 char equationText[64];
                 sprintf(equationText, "%d %c %d = ?",
                         currentEquation.num1, currentEquation.operation, currentEquation.num2);
-                DrawTextEx(pixantiquaFont, equationText, (Vector2){20, 20}, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING, BLACK);
+                DrawTextEx(pixantiquaFont, equationText, (Vector2){20, 20}, EQUATION_SIZE, PIXANTIQUA_SPACING, BLACK);
 
                 // Draw decomposed equation with color coding (if enabled)
                 if (showEquationBreakdown) {
-                    DrawDecomposedEquation(&currentEquation, pixantiquaFont, (Vector2){20, 60}, pixantiquaFont.baseSize * 2, PIXANTIQUA_SPACING, 0.0f);
+                    DrawDecomposedEquation(&currentEquation, pixantiquaFont, (Vector2){20, 60}, EQUATION_BREAKDOWN_SIZE, PIXANTIQUA_SPACING, 0.0f);
                 }
 
                 // Draw score and level - using Mecha font
                 char scoreText[64];
                 sprintf(scoreText, GetText(STR_SCORE), score);
-                DrawTextEx(mechaFont, scoreText, (Vector2){screenWidth - 180, 20}, mechaFont.baseSize * 2, MECHA_SPACING, BLACK);
+                DrawTextEx(mechaFont, scoreText, (Vector2){screenWidth - 180, 20}, SCORE_SIZE, MECHA_SPACING, BLACK);
 
                 char levelText[64];
                 sprintf(levelText, GetText(STR_LEVEL), level);
-                DrawTextEx(mechaFont, levelText, (Vector2){screenWidth - 180, 60}, mechaFont.baseSize * 2, MECHA_SPACING, DARKBLUE);
+                DrawTextEx(mechaFont, levelText, (Vector2){screenWidth - 180, 60}, SCORE_SIZE, MECHA_SPACING, DARKBLUE);
 
                 // Draw drone sprites
                 for (int i = 0; i < MAX_DRONES; i++) {
@@ -685,11 +730,11 @@ int main(void)
                         if (drones[i].active && drones[i].state == DRONE_FLYING) {
                             char answerText[16];
                             sprintf(answerText, "%d", drones[i].answer);
-                            Vector2 textSize = MeasureTextEx(pixantiquaFont, answerText, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING);
+                            Vector2 textSize = MeasureTextEx(pixantiquaFont, answerText, EQUATION_SIZE, PIXANTIQUA_SPACING);
                             Vector2 textPos = {drones[i].position.x + DRONE_TEXT_OFFSET_X - textSize.x/2,
                                                drones[i].position.y + DRONE_TEXT_OFFSET_Y};
                             // Draw red text
-                            DrawTextEx(pixantiquaFont, answerText, textPos, pixantiquaFont.baseSize * 3, PIXANTIQUA_SPACING, RED);
+                            DrawTextEx(pixantiquaFont, answerText, textPos, EQUATION_SIZE, PIXANTIQUA_SPACING, RED);
                         }
                     }
                 }
@@ -706,10 +751,10 @@ int main(void)
                 // Draw pause message - using Mecha font
                 if (paused && !showOptionsMenu) {
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 128});
-                    Vector2 pausedSize = MeasureTextEx(mechaFont, GetText(STR_PAUSED), mechaFont.baseSize * 4, MECHA_SPACING);
-                    DrawTextEx(mechaFont, GetText(STR_PAUSED), (Vector2){screenWidth/2 - pausedSize.x/2, screenHeight/2 - 40}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
-                    Vector2 resumeSize = MeasureTextEx(mechaFont, GetText(STR_PRESS_RESUME), mechaFont.baseSize * 2, MECHA_SPACING);
-                    DrawTextEx(mechaFont, GetText(STR_PRESS_RESUME), (Vector2){screenWidth/2 - resumeSize.x/2, screenHeight/2 + 20}, mechaFont.baseSize * 2, MECHA_SPACING, WHITE);
+                    Vector2 pausedSize = MeasureTextEx(mechaFont, GetText(STR_PAUSED), TITLE_SIZE_LARGE, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_PAUSED), (Vector2){screenWidth/2 - pausedSize.x/2, screenHeight/2 - 40}, TITLE_SIZE_LARGE, MECHA_SPACING, WHITE);
+                    Vector2 resumeSize = MeasureTextEx(mechaFont, GetText(STR_PRESS_RESUME), SCORE_SIZE, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_PRESS_RESUME), (Vector2){screenWidth/2 - resumeSize.x/2, screenHeight/2 + 20}, SCORE_SIZE, MECHA_SPACING, WHITE);
                 }
 
                 // Draw options menu
@@ -718,11 +763,11 @@ int main(void)
                     DrawRectangle(0, 0, screenWidth, screenHeight, (Color){0, 0, 0, 180});
 
                     // Menu title
-                    Vector2 optionsTitleSize2 = MeasureTextEx(mechaFont, GetText(STR_OPTIONS), mechaFont.baseSize * 4, MECHA_SPACING);
-                    DrawTextEx(mechaFont, GetText(STR_OPTIONS), (Vector2){screenWidth/2 - optionsTitleSize2.x/2, screenHeight/2 - 150}, mechaFont.baseSize * 4, MECHA_SPACING, WHITE);
+                    Vector2 optionsTitleSize2 = MeasureTextEx(mechaFont, GetText(STR_OPTIONS), TITLE_SIZE_LARGE, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_OPTIONS), (Vector2){screenWidth/2 - optionsTitleSize2.x/2, screenHeight/2 - 150}, TITLE_SIZE_LARGE, MECHA_SPACING, WHITE);
 
                     // Option 1: Show Equation Breakdown
-                    DrawTextEx(setbackFont, GetText(STR_SHOW_BREAKDOWN), (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                    DrawTextEx(setbackFont, GetText(STR_SHOW_BREAKDOWN), (Vector2){screenWidth/2 - 200, screenHeight/2 - 70}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                     // Checkbox 1
                     Rectangle checkboxRect1 = {screenWidth/2 + 180, screenHeight/2 - 80, 30, 30};
@@ -734,7 +779,7 @@ int main(void)
                     }
 
                     // Option 2: Allow Negative Results
-                    DrawTextEx(setbackFont, GetText(STR_ALLOW_NEGATIVE), (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                    DrawTextEx(setbackFont, GetText(STR_ALLOW_NEGATIVE), (Vector2){screenWidth/2 - 200, screenHeight/2 - 20}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                     // Checkbox 2
                     Rectangle checkboxRect2 = {screenWidth/2 + 180, screenHeight/2 - 30, 30, 30};
@@ -746,7 +791,7 @@ int main(void)
                     }
 
                     // Option 3: Music Volume
-                    DrawTextEx(setbackFont, GetText(STR_MUSIC_VOLUME), (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                    DrawTextEx(setbackFont, GetText(STR_MUSIC_VOLUME), (Vector2){screenWidth/2 - 200, screenHeight/2 + 40}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                     // Slider
                     Rectangle sliderBg = {screenWidth/2 - 100, screenHeight/2 + 50, 200, 20};
@@ -765,17 +810,17 @@ int main(void)
                     // Volume percentage
                     char volumeText[16];
                     sprintf(volumeText, "%d%%", (int)(musicVolume * 100));
-                    DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, setbackFont.baseSize * 2, SETBACK_SPACING, WHITE);
+                    DrawTextEx(setbackFont, volumeText, (Vector2){screenWidth/2 + 120, screenHeight/2 + 45}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, WHITE);
 
                     // Instructions
-                    Vector2 closeSize2 = MeasureTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), setbackFont.baseSize * 2, SETBACK_SPACING);
-                    DrawTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), (Vector2){screenWidth/2 - closeSize2.x/2, screenHeight/2 + 100}, setbackFont.baseSize * 2, SETBACK_SPACING, LIGHTGRAY);
+                    Vector2 closeSize2 = MeasureTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), TEXT_SIZE_MEDIUM, SETBACK_SPACING);
+                    DrawTextEx(setbackFont, GetText(STR_CLOSE_OPTIONS), (Vector2){screenWidth/2 - closeSize2.x/2, screenHeight/2 + 100}, TEXT_SIZE_MEDIUM, SETBACK_SPACING, LIGHTGRAY);
                 }
 
                 // Draw game over message - using Mecha font
                 if (ammo < SHOT_COST) {
-                    Vector2 gameOverSize = MeasureTextEx(mechaFont, GetText(STR_OUT_OF_AMMO), mechaFont.baseSize * 2, MECHA_SPACING);
-                    DrawTextEx(mechaFont, GetText(STR_OUT_OF_AMMO), (Vector2){screenWidth/2 - gameOverSize.x/2, screenHeight/2}, mechaFont.baseSize * 2, MECHA_SPACING, RED);
+                    Vector2 gameOverSize = MeasureTextEx(mechaFont, GetText(STR_OUT_OF_AMMO), SCORE_SIZE, MECHA_SPACING);
+                    DrawTextEx(mechaFont, GetText(STR_OUT_OF_AMMO), (Vector2){screenWidth/2 - gameOverSize.x/2, screenHeight/2}, SCORE_SIZE, MECHA_SPACING, RED);
                 }
             }
 
@@ -801,11 +846,12 @@ int main(void)
     //--------------------------------------------------------------------------------------
     CleanupLocalization();
     UnloadRenderTexture(target);
-    UnloadFont(mechaFont);
-    UnloadFont(setbackFont);
-    UnloadFont(romulusFont);
-    UnloadFont(alphaBetaFont);
-    UnloadFont(pixantiquaFont);
+    // Unload TTF fonts (only unique font instances)
+    UnloadFont(titleFont);
+    UnloadFont(menuFont);
+    UnloadFont(boldFont);
+    UnloadFont(regularFont);
+    UnloadFont(equationFont);
     UnloadTexture(sahedTexture);
     UnloadTexture(gepardTexture);
     UnloadTexture(backgroundTexture);
