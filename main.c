@@ -89,6 +89,9 @@
 #define DRONE_FALL_END_Y GROUND_LEVEL
 #define DRONE_TEXT_OFFSET_X 95.0f
 #define DRONE_TEXT_OFFSET_Y 30.0f
+#define FAKE_DESTRUCTION_FRAME_DURATION 0.15f  // Duration per frame for fake destruction (cells 2-4)
+#define FAKE_DESTRUCTION_FALL_DISTANCE 200.0f  // How far fake shaheds fall during destruction
+#define EXPLOSION_FRAME_DURATION 0.08f         // Duration per frame for explosion (cells 6-10)
 
 // Projectile visual constants
 #define PROJECTILE_TRAIL_LENGTH 0.02f
@@ -107,7 +110,8 @@
 //------------------------------------------------------------------------------------
 typedef enum {
     DRONE_FLYING = 0,
-    DRONE_EXPLODING,
+    DRONE_FAKE_DESTRUCTION, // Non-shahed drones show fake destruction (cells 2-4)
+    DRONE_EXPLODING,        // Real explosion animation (cells 6-10)
     DRONE_FALLING,
     DRONE_DEAD
 } DroneState;
@@ -118,6 +122,7 @@ typedef struct Drone {
     bool isShahed;
     DroneState state;
     float animTimer;
+    float stateStartY;  // Y position when current state started (for fake destruction fall)
     bool active;
 } Drone;
 
@@ -1188,9 +1193,29 @@ void UpdateDrones(Drone drones[], float deltaTime) {
                 }
                 break;
 
-            case DRONE_EXPLODING:
+            case DRONE_FAKE_DESTRUCTION:
+                // Play fake destruction animation for non-shahed drones (cells 2-4)
                 drones[i].animTimer += deltaTime;
-                if (drones[i].animTimer > EXPLOSION_DURATION) {
+
+                // Make the drone fall during the animation
+                float animProgress = drones[i].animTimer / (FAKE_DESTRUCTION_FRAME_DURATION * 3.0f);
+                if (animProgress > 1.0f) animProgress = 1.0f;
+                drones[i].position.y = drones[i].stateStartY + (animProgress * FAKE_DESTRUCTION_FALL_DISTANCE);
+
+                // Continue moving left slightly
+                drones[i].position.x -= DRONE_SPEED * 0.3f * deltaTime;
+
+                // 3 frames * duration per frame
+                if (drones[i].animTimer > FAKE_DESTRUCTION_FRAME_DURATION * 3.0f) {
+                    drones[i].state = DRONE_DEAD;
+                }
+                break;
+
+            case DRONE_EXPLODING:
+                // Play real explosion animation (cells 6-10)
+                drones[i].animTimer += deltaTime;
+                // 5 frames * duration per frame
+                if (drones[i].animTimer > EXPLOSION_FRAME_DURATION * 5.0f) {
                     drones[i].state = DRONE_DEAD;
                 }
                 break;
@@ -1251,22 +1276,39 @@ void DrawDrone(Texture2D texture, Drone drone) {
 
     switch(drone.state) {
         case DRONE_FLYING:
+            // Cell 1: Normal view (x=0)
             sourceRec = (Rectangle){ 0, 0, 100, 100 };
             break;
-        case DRONE_EXPLODING:
-            sourceRec = (Rectangle){ 100, 0, 100, 100 };
+
+        case DRONE_FAKE_DESTRUCTION: {
+            // Cells 2-4: Fake destruction sequence (x=100, 200, 300)
+            int frame = (int)(drone.animTimer / FAKE_DESTRUCTION_FRAME_DURATION);
+            if (frame > 2) frame = 2; // Clamp to last frame
+            sourceRec = (Rectangle){ (1 + frame) * 100, 0, 100, 100 };
             break;
+        }
+
+        case DRONE_EXPLODING: {
+            // Cells 6-10: Real explosion sequence (x=500, 600, 700, 800, 900)
+            int frame = (int)(drone.animTimer / EXPLOSION_FRAME_DURATION);
+            if (frame > 4) frame = 4; // Clamp to last frame
+            sourceRec = (Rectangle){ (5 + frame) * 100, 0, 100, 100 };
+            break;
+        }
+
         case DRONE_FALLING:
-            // Shahed uses attacking sprite (4th cell), others use damaged sprite (3rd cell)
+            // Cell 5: Attacking shahed (x=400) when falling
             if (drone.isShahed) {
-                sourceRec = (Rectangle){ 300, 0, 100, 100 };
+                sourceRec = (Rectangle){ 400, 0, 100, 100 };
             } else {
-                sourceRec = (Rectangle){ 200, 0, 100, 100 };
+                // Non-shahed drones shouldn't normally be falling, but show cell 1 if they are
+                sourceRec = (Rectangle){ 0, 0, 100, 100 };
             }
             break;
+
         case DRONE_DEAD:
-            sourceRec = (Rectangle){ 200, 0, 100, 100 };
-            break;
+            // Don't draw dead drones
+            return;
     }
 
     // Blink effect for falling drones near ground
@@ -1388,9 +1430,10 @@ void UpdateProjectiles(Projectile projectiles[], Drone drones[], int *ammo, int 
                             *score += SCORE_CORRECT_HIT;
                             *shahedActive = false; // Shahed destroyed, can generate new equation
                         } else {
-                            // Wrong hit
-                            drones[targetIdx].state = DRONE_FALLING;
+                            // Wrong hit - show fake destruction animation
+                            drones[targetIdx].state = DRONE_FAKE_DESTRUCTION;
                             drones[targetIdx].animTimer = 0.0f;
+                            drones[targetIdx].stateStartY = drones[targetIdx].position.y;
                             *score += SCORE_WRONG_HIT; // Note: SCORE_WRONG_HIT is -5
                         }
                     }
